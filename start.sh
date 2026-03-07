@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Setting up environment variables..."
+echo "=== Starting PFDA Contract Monitoring Backend ==="
 
 # Map Railway variables to Laravel variables if they exist
 if [ -n "$MYSQLHOST" ]; then
@@ -24,6 +24,11 @@ if [ -n "$MYSQLPASSWORD" ]; then
   export DB_PASSWORD=$MYSQLPASSWORD
 fi
 
+# Set APP_URL based on the application domain
+if [ -z "$APP_URL" ]; then
+  export APP_URL="https://contractmonitoringbackend-production.up.railway.app"
+fi
+
 # If no Railway variables, use defaults from .env
 export DB_HOST=${DB_HOST:-127.0.0.1}
 export DB_PORT=${DB_PORT:-3306}
@@ -34,22 +39,20 @@ export DB_PASSWORD=${DB_PASSWORD:-}
 echo "Database Host: $DB_HOST"
 echo "Database Port: $DB_PORT"
 echo "Database Name: $DB_DATABASE"
-echo "Starting Laravel application..."
+echo "App URL: $APP_URL"
 
 # Ensure storage directories exist and are writable
 mkdir -p storage/framework/{sessions,views,cache,testing} storage/logs bootstrap/cache
-chmod -R 777 storage bootstrap/cache
+chmod -R 777 storage bootstrap/cache public 2>/dev/null || true
 
-# Clear old caches
-php artisan config:clear || true
-php artisan route:clear || true
-php artisan view:clear || true
+echo "Clearing Laravel caches..."
+php artisan config:clear 2>/dev/null || true
+php artisan route:clear 2>/dev/null || true
+php artisan view:clear 2>/dev/null || true
+php artisan cache:clear 2>/dev/null || true
 
-# Re-cache configuration
-php artisan config:cache || true
-php artisan route:cache || true
-php artisan view:cache || true
+echo "Running database migrations..."
+php artisan migrate --force 2>&1 || echo "Migration warning (DB might already exist)"
 
-# Start the server
-echo "Starting PHP server on port $PORT"
+echo "App is ready. Starting PHP server on port $PORT..."
 exec php artisan serve --host=0.0.0.0 --port=$PORT
