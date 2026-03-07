@@ -99,8 +99,6 @@ class ContractController extends Controller
         if (isset($data['startDate'])) {
             $data['start_date'] = $data['startDate'];
             unset($data['startDate']);
-        } elseif (!isset($data['start_date']) && isset($data['start_date'])) {
-            // Already in snake_case, no need to convert
         }
         
         if (isset($data['durationMonths'])) {
@@ -152,8 +150,6 @@ class ContractController extends Controller
         if (isset($data['interestRate'])) {
             $data['interest_rate'] = $data['interestRate'];
             unset($data['interestRate']);
-        } elseif (!isset($data['interest_rate']) && isset($data['interest_rate'])) {
-            // Already in snake_case, no need to convert
         }
         
         // Handle terms/termsConditions/terms_conditions variations
@@ -163,8 +159,6 @@ class ContractController extends Controller
         } elseif (isset($data['termsConditions'])) {
             $data['terms_conditions'] = $data['termsConditions'];
             unset($data['termsConditions']);
-        } elseif (!isset($data['terms_conditions']) && isset($data['terms_conditions'])) {
-            // Already in snake_case, no need to convert
         }
         
         // If tenantId (User ID) was provided, convert it to tenant_id (Tenant ID)
