@@ -12,20 +12,15 @@ cmds = [
 dependsOn = ["install"]
 cmds = [
   "npm run build",
-  "mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache",
-  "chmod -R 777 storage bootstrap/cache",
-  "php artisan config:cache",
-  "php artisan route:cache",
-  "php artisan view:cache"
+  "chmod +x start.sh"
 ]
 
 [phases.deploy]
 dependsOn = ["build"]
 cmds = [
-  "php artisan storage:link || true",
-  "php artisan migrate --force"
+  "php artisan migrate --force || true"
 ]
 
 [[processes]]
 type = "web"
-command = "php artisan serve --host=0.0.0.0 --port=$PORT"
+command = "bash start.sh"
