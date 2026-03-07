@@ -83,6 +83,8 @@ class ContractController extends Controller
      */
     public function store(Request $request)
     {
+        \Log::info('ContractController@store called');
+        
         // Map camelCase to snake_case (handle both frontend field name variations)
         $data = $request->all();
         
@@ -199,6 +201,8 @@ class ContractController extends Controller
             ], 422);
         }
 
+        \Log::info('Validation passed for contract creation with:', ['data_keys' => array_keys($data)]);
+
         // Check if rental space is available
         $rentalSpace = RentalSpace::find($data['rental_space_id']);
         if (!$rentalSpace || $rentalSpace->status !== 'available') {
@@ -232,20 +236,38 @@ class ContractController extends Controller
         }
 
         // Create contract
-        $contract = Contract::create([
-            'contract_number' => 'CON-' . date('Y') . '-' . str_pad(Contract::withTrashed()->count() + 1, 6, '0', STR_PAD_LEFT),
+        \Log::info('About to create contract with data:', [
             'tenant_id' => $data['tenant_id'],
             'rental_space_id' => $data['rental_space_id'],
-            'start_date' => $startDate,
-            'end_date' => $endDate,
-            'duration_months' => $data['duration_months'],
             'monthly_rental' => $data['monthly_rental'],
             'deposit_amount' => $data['deposit_amount'] ?? 0,
-            'interest_rate' => $data['interest_rate'] ?? 2, // Default 2% monthly interest
-            'terms_conditions' => $data['terms_conditions'] ?? null,
-            'contract_file' => $contractFile,
-            'status' => 'pending',
         ]);
+
+        try {
+            $contract = Contract::create([
+                'contract_number' => 'CON-' . date('Y') . '-' . str_pad(Contract::withTrashed()->count() + 1, 6, '0', STR_PAD_LEFT),
+                'tenant_id' => $data['tenant_id'],
+                'rental_space_id' => $data['rental_space_id'],
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'duration_months' => $data['duration_months'],
+                'monthly_rental' => $data['monthly_rental'],
+                'deposit_amount' => $data['deposit_amount'] ?? 0,
+                'interest_rate' => $data['interest_rate'] ?? 2, // Default 2% monthly interest
+                'terms_conditions' => $data['terms_conditions'] ?? null,
+                'contract_file' => $contractFile,
+                'status' => 'pending',
+            ]);
+
+            \Log::info('Contract created successfully:', ['contract_id' => $contract->id, 'contract_number' => $contract->contract_number]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to create contract:', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create contract',
+                'error' => $e->getMessage()
+            ], 500);
+        }
 
         AuditLog::log('create', 'Contract', $contract->id, "Created contract: {$contract->contract_number}", null, $contract->toArray());
 
