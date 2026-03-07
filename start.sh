@@ -7,6 +7,11 @@ echo "=== Starting PFDA Contract Monitoring Backend ==="
 export APP_ENV=${APP_ENV:-production}
 export APP_DEBUG=${APP_DEBUG:-true}
 
+# Set APP_KEY - Critical for Laravel encryption
+if [ -z "$APP_KEY" ]; then
+  export APP_KEY="base64:2rLGpIMc5ziU63SxFHD6m+cE7sA842HiRBqt8CqQWQ0="
+fi
+
 # Map Railway variables to Laravel variables if they exist
 if [ -n "$MYSQLHOST" ]; then
   export DB_HOST=$MYSQLHOST
@@ -42,6 +47,7 @@ export DB_PASSWORD=${DB_PASSWORD:-}
 
 echo "Environment: $APP_ENV"
 echo "Debug: $APP_DEBUG"
+echo "APP_KEY: ${APP_KEY:0:20}..." 
 echo "Database Host: $DB_HOST"
 echo "Database Port: $DB_PORT"
 echo "Database Name: $DB_DATABASE"
