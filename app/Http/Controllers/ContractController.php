@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\Contract;
 use App\Models\Tenant;
+use App\Models\User;
 use App\Models\RentalSpace;
 use App\Models\AuditLog;
 use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Endroid\QrCode\QrCode;
+use Endroid\QrCode\Writer\SvgWriter;
 use Carbon\Carbon;
 
 class ContractController extends Controller
@@ -37,15 +40,15 @@ class ContractController extends Controller
             });
         }
 
-        // Filter by status
+        // Filter by status (case-insensitive)
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            $query->where('status', strtolower($request->status));
         }
 
-        // Filter by rental space type
+        // Filter by rental space type (case-insensitive)
         if ($request->has('space_type')) {
             $query->whereHas('rentalSpace', function ($q) use ($request) {
-                $q->where('space_type', $request->space_type);
+                $q->whereRaw('LOWER(space_type) = ?', [strtolower($request->space_type)]);
             });
         }
 
@@ -80,7 +83,94 @@ class ContractController extends Controller
      */
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        // Map camelCase to snake_case (handle both frontend field name variations)
+        $data = $request->all();
+        
+        if (isset($data['tenantId'])) {
+            $data['tenant_id'] = $data['tenantId'];
+            unset($data['tenantId']);
+        }
+        
+        if (isset($data['rentalSpaceId'])) {
+            $data['rental_space_id'] = $data['rentalSpaceId'];
+            unset($data['rentalSpaceId']);
+        }
+        
+        if (isset($data['startDate'])) {
+            $data['start_date'] = $data['startDate'];
+            unset($data['startDate']);
+        }
+        
+        if (isset($data['durationMonths'])) {
+            $data['duration_months'] = $data['durationMonths'];
+            unset($data['durationMonths']);
+        }
+        
+        // If endDate provided but no duration_months, calculate it
+        if (isset($data['endDate']) && !isset($data['duration_months'])) {
+            if (isset($data['start_date'])) {
+                $startDate = Carbon::parse($data['start_date']);
+                $endDate = Carbon::parse($data['endDate']);
+                $data['duration_months'] = intval($startDate->diffInMonths($endDate)) + 1;
+            }
+        }
+        
+        if (isset($data['endDate'])) {
+            unset($data['endDate']); // Remove endDate, we calculate it from duration
+        }
+        
+        // Handle monthlyRent/monthlyRental variations
+        if (isset($data['monthlyRent'])) {
+            $data['monthly_rental'] = $data['monthlyRent'];
+            unset($data['monthlyRent']);
+        } elseif (isset($data['monthlyRental'])) {
+            $data['monthly_rental'] = $data['monthlyRental'];
+            unset($data['monthlyRental']);
+        }
+        
+        // Handle securityDeposit/depositAmount variations
+        if (isset($data['securityDeposit'])) {
+            $data['deposit_amount'] = $data['securityDeposit'];
+            unset($data['securityDeposit']);
+        } elseif (isset($data['depositAmount'])) {
+            $data['deposit_amount'] = $data['depositAmount'];
+            unset($data['depositAmount']);
+        }
+        
+        if (isset($data['interestRate'])) {
+            $data['interest_rate'] = $data['interestRate'];
+            unset($data['interestRate']);
+        }
+        
+        // Handle terms/termsConditions variations
+        if (isset($data['terms'])) {
+            $data['terms_conditions'] = $data['terms'];
+            unset($data['terms']);
+        } elseif (isset($data['termsConditions'])) {
+            $data['terms_conditions'] = $data['termsConditions'];
+            unset($data['termsConditions']);
+        }
+        
+        // If tenantId (User ID) was provided, convert it to tenant_id (Tenant ID)
+        if (isset($data['tenant_id']) && !is_null($data['tenant_id'])) {
+            // Check if the provided tenant_id is actually a Tenant ID (exists in tenants table)
+            $tenantExists = Tenant::where('id', $data['tenant_id'])->exists();
+            if (!$tenantExists) {
+                // It might be a User ID, try to find the associated Tenant
+                $user = User::with('tenant')->find($data['tenant_id']);
+                if ($user && $user->tenant) {
+                    $data['tenant_id'] = $user->tenant->id;
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Tenant profile not found for this user',
+                        'errors' => ['tenant_id' => 'Tenant profile not found']
+                    ], 422);
+                }
+            }
+        }
+        
+        $validator = Validator::make($data, [
             'tenant_id' => 'required|exists:tenants,id',
             'rental_space_id' => 'required|exists:rental_spaces,id',
             'start_date' => 'required|date',
@@ -100,8 +190,8 @@ class ContractController extends Controller
         }
 
         // Check if rental space is available
-        $rentalSpace = RentalSpace::find($request->rental_space_id);
-        if ($rentalSpace->status !== 'available') {
+        $rentalSpace = RentalSpace::find($data['rental_space_id']);
+        if (!$rentalSpace || $rentalSpace->status !== 'available') {
             return response()->json([
                 'success' => false,
                 'message' => 'Rental space is not available'
@@ -109,8 +199,8 @@ class ContractController extends Controller
         }
 
         // Check if tenant has existing active contract for the same space
-        $existingContract = Contract::where('tenant_id', $request->tenant_id)
-            ->where('rental_space_id', $request->rental_space_id)
+        $existingContract = Contract::where('tenant_id', $data['tenant_id'])
+            ->where('rental_space_id', $data['rental_space_id'])
             ->where('status', 'active')
             ->exists();
 
@@ -122,8 +212,8 @@ class ContractController extends Controller
         }
 
         // Calculate end date
-        $startDate = Carbon::parse($request->start_date);
-        $endDate = $startDate->copy()->addMonths($request->duration_months)->subDay();
+        $startDate = Carbon::parse($data['start_date']);
+        $endDate = $startDate->copy()->addMonths($data['duration_months'])->subDay();
 
         // Handle file upload
         $contractFile = null;
@@ -134,15 +224,15 @@ class ContractController extends Controller
         // Create contract
         $contract = Contract::create([
             'contract_number' => 'CON-' . date('Y') . '-' . str_pad(Contract::withTrashed()->count() + 1, 6, '0', STR_PAD_LEFT),
-            'tenant_id' => $request->tenant_id,
-            'rental_space_id' => $request->rental_space_id,
+            'tenant_id' => $data['tenant_id'],
+            'rental_space_id' => $data['rental_space_id'],
             'start_date' => $startDate,
             'end_date' => $endDate,
-            'duration_months' => $request->duration_months,
-            'monthly_rental' => $request->monthly_rental,
-            'deposit_amount' => $request->deposit_amount ?? 0,
-            'interest_rate' => $request->interest_rate ?? 2, // Default 2% monthly interest
-            'terms_conditions' => $request->terms_conditions,
+            'duration_months' => $data['duration_months'],
+            'monthly_rental' => $data['monthly_rental'],
+            'deposit_amount' => $data['deposit_amount'] ?? 0,
+            'interest_rate' => $data['interest_rate'] ?? 2, // Default 2% monthly interest
+            'terms_conditions' => $data['terms_conditions'] ?? null,
             'contract_file' => $contractFile,
             'status' => 'pending',
         ]);
@@ -182,7 +272,74 @@ class ContractController extends Controller
     {
         $contract = Contract::findOrFail($id);
 
-        $validator = Validator::make($request->all(), [
+        // Map camelCase to snake_case (handle both frontend field name variations)
+        $data = $request->all();
+        
+        // Map tenant and rental space IDs
+        if (isset($data['tenantId'])) {
+            $data['tenant_id'] = $data['tenantId'];
+            unset($data['tenantId']);
+        }
+        
+        if (isset($data['rentalSpaceId'])) {
+            $data['rental_space_id'] = $data['rentalSpaceId'];
+            unset($data['rentalSpaceId']);
+        }
+        
+        if (isset($data['startDate'])) {
+            $data['start_date'] = $data['startDate'];
+            unset($data['startDate']);
+        }
+        
+        if (isset($data['endDate'])) {
+            unset($data['endDate']); // Remove endDate, we calculate it
+        }
+        
+        if (isset($data['durationMonths'])) {
+            $data['duration_months'] = $data['durationMonths'];
+            unset($data['durationMonths']);
+        }
+        
+        // Handle monthlyRent/monthlyRental variations
+        if (isset($data['monthlyRent'])) {
+            $data['monthly_rental'] = $data['monthlyRent'];
+            unset($data['monthlyRent']);
+        } elseif (isset($data['monthlyRental'])) {
+            $data['monthly_rental'] = $data['monthlyRental'];
+            unset($data['monthlyRental']);
+        }
+        
+        // Handle securityDeposit/depositAmount variations
+        if (isset($data['securityDeposit'])) {
+            $data['deposit_amount'] = $data['securityDeposit'];
+            unset($data['securityDeposit']);
+        } elseif (isset($data['depositAmount'])) {
+            $data['deposit_amount'] = $data['depositAmount'];
+            unset($data['depositAmount']);
+        }
+        
+        if (isset($data['interestRate'])) {
+            $data['interest_rate'] = $data['interestRate'];
+            unset($data['interestRate']);
+        }
+        
+        // Handle terms/termsConditions variations
+        if (isset($data['terms'])) {
+            $data['terms_conditions'] = $data['terms'];
+            unset($data['terms']);
+        } elseif (isset($data['termsConditions'])) {
+            $data['terms_conditions'] = $data['termsConditions'];
+            unset($data['termsConditions']);
+        }
+        
+        if (isset($data['contractFile'])) {
+            $data['contract_file'] = $data['contractFile'];
+            unset($data['contractFile']);
+        }
+
+        $validator = Validator::make($data, [
+            'tenant_id' => 'sometimes|integer|exists:tenants,id',
+            'rental_space_id' => 'sometimes|integer|exists:rental_spaces,id',
             'start_date' => 'sometimes|date',
             'duration_months' => 'sometimes|integer|min:1',
             'monthly_rental' => 'sometimes|numeric|min:0',
@@ -212,13 +369,13 @@ class ContractController extends Controller
         }
 
         // Recalculate end date if start date or duration changed
-        if ($request->has('start_date') || $request->has('duration_months')) {
-            $startDate = $request->has('start_date') ? Carbon::parse($request->start_date) : $contract->start_date;
-            $duration = $request->has('duration_months') ? $request->duration_months : $contract->duration_months;
+        if (isset($data['start_date']) || isset($data['duration_months'])) {
+            $startDate = isset($data['start_date']) ? Carbon::parse($data['start_date']) : $contract->start_date;
+            $duration = isset($data['duration_months']) ? $data['duration_months'] : $contract->duration_months;
             $contract->end_date = $startDate->copy()->addMonths($duration)->subDay();
         }
 
-        $contract->fill($request->except('contract_file'))->save();
+        $contract->fill($data)->save();
 
         AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
 
@@ -234,44 +391,93 @@ class ContractController extends Controller
      */
     public function activate($id)
     {
-        $contract = Contract::findOrFail($id);
+        try {
+            $contract = Contract::with('rentalSpace')->findOrFail($id);
 
-        if ($contract->status !== 'pending') {
+            \Log::info("=== ACTIVATE CONTRACT {$id} ===");
+            \Log::info("Contract ID: {$contract->id}, Rental Space ID: {$contract->rental_space_id}, Status: {$contract->status}");
+
+            // Allow activation for any contract that isn't already in a terminal state
+            $inactiveStatuses = ['active', 'expired', 'terminated'];
+            if (in_array(strtolower($contract->status), array_map('strtolower', $inactiveStatuses))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Cannot activate contract with status: {$contract->status}. Contract is already in a terminal state.",
+                    'current_status' => $contract->status
+                ], 422);
+            }
+
+            $oldStatus = $contract->status;
+            $contract->status = 'active';
+            $contract->save();
+
+            \Log::info("Contract status updated to active");
+
+            // Update rental space status to occupied
+            if ($contract->rental_space_id) {
+                \Log::info("Updating rental space {$contract->rental_space_id}...");
+                
+                // Try Eloquent update first
+                if ($contract->rentalSpace) {
+                    $contract->rentalSpace->status = 'occupied';
+                    $contract->rentalSpace->save();
+                    \Log::info("Eloquent update: Rental space {$contract->rental_space_id} status changed to 'occupied'");
+                }
+                
+                // Also do a direct database update to be sure
+                $updated = \DB::table('rental_spaces')
+                    ->where('id', $contract->rental_space_id)
+                    ->update(['status' => 'occupied']);
+                
+                \Log::info("Direct DB update result: " . ($updated ? "Success ({$updated} rows)" : "No rows updated"));
+                
+                // Verify the update
+                $verify = \DB::table('rental_spaces')->where('id', $contract->rental_space_id)->first();
+                \Log::info("Verification - Rental space status is now: " . ($verify ? $verify->status : 'NULL'));
+                
+            } else {
+                \Log::error("Contract {$id} has no rental_space_id!");
+            }
+
+            // Generate payment schedule
+            try {
+                $contract->generatePaymentSchedule();
+                \Log::info("Payment schedule generated successfully");
+            } catch (\Exception $e) {
+                \Log::error("Error generating payment schedule: " . $e->getMessage());
+                // Continue activation even if payment schedule fails
+            }
+
+            // Create notification for tenant
+            $tenant = $contract->tenant;
+            $rentalSpaceName = $contract->rentalSpace ? $contract->rentalSpace->name : 'Unknown Space';
+            Notification::create([
+                'user_id' => $tenant->user_id,
+                'type' => 'contract_activated',
+                'title' => 'Contract Activated',
+                'message' => "Your contract {$contract->contract_number} for {$rentalSpaceName} has been activated.",
+                'data' => ['contract_id' => $contract->id],
+            ]);
+
+            AuditLog::log('update', 'Contract', $contract->id, "Activated contract: {$contract->contract_number}", ['status' => $oldStatus], ['status' => 'active']);
+
+            // Refresh to get latest data
+            $contract->refresh();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Contract activated successfully',
+                'data' => $contract->load(['tenant.user', 'rentalSpace', 'payments'])
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Error activating contract {$id}: " . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Only pending contracts can be activated'
-            ], 422);
+                'message' => 'Error activating contract: ' . $e->getMessage()
+            ], 500);
         }
-
-        $oldStatus = $contract->status;
-        $contract->status = 'active';
-        $contract->save();
-
-        // Update rental space status to occupied
-        $rentalSpace = $contract->rentalSpace;
-        $rentalSpace->status = 'occupied';
-        $rentalSpace->save();
-
-        // Generate payment schedule
-        $contract->generatePaymentSchedule();
-
-        // Create notification for tenant
-        $tenant = $contract->tenant;
-        Notification::create([
-            'user_id' => $tenant->user_id,
-            'type' => 'contract_activated',
-            'title' => 'Contract Activated',
-            'message' => "Your contract {$contract->contract_number} for {$rentalSpace->name} has been activated.",
-            'data' => ['contract_id' => $contract->id],
-        ]);
-
-        AuditLog::log('update', 'Contract', $contract->id, "Activated contract: {$contract->contract_number}", ['status' => $oldStatus], ['status' => 'active']);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Contract activated successfully',
-            'data' => $contract->load(['tenant.user', 'rentalSpace', 'payments'])
-        ]);
     }
 
     /**
@@ -290,7 +496,10 @@ class ContractController extends Controller
             ], 422);
         }
 
-        $contract = Contract::findOrFail($id);
+        $contract = Contract::with('rentalSpace')->findOrFail($id);
+
+        \Log::info("=== TERMINATE CONTRACT {$id} ===");
+        \Log::info("Contract ID: {$contract->id}, Rental Space ID: {$contract->rental_space_id}, Status: {$contract->status}");
 
         if ($contract->status !== 'active') {
             return response()->json([
@@ -304,10 +513,33 @@ class ContractController extends Controller
         $contract->terms_conditions .= "\n\nTermination Reason: " . $request->reason;
         $contract->save();
 
+        \Log::info("Contract status updated to terminated");
+
         // Update rental space status to available
-        $rentalSpace = $contract->rentalSpace;
-        $rentalSpace->status = 'available';
-        $rentalSpace->save();
+        if ($contract->rental_space_id) {
+            \Log::info("Updating rental space {$contract->rental_space_id}...");
+            
+            // Try Eloquent update first
+            if ($contract->rentalSpace) {
+                $contract->rentalSpace->status = 'available';
+                $contract->rentalSpace->save();
+                \Log::info("Eloquent update: Rental space {$contract->rental_space_id} status changed to 'available'");
+            }
+            
+            // Also do a direct database update to be sure
+            $updated = \DB::table('rental_spaces')
+                ->where('id', $contract->rental_space_id)
+                ->update(['status' => 'available']);
+            
+            \Log::info("Direct DB update result: " . ($updated ? "Success ({$updated} rows)" : "No rows updated"));
+            
+            // Verify the update
+            $verify = \DB::table('rental_spaces')->where('id', $contract->rental_space_id)->first();
+            \Log::info("Verification - Rental space status is now: " . ($verify ? $verify->status : 'NULL'));
+            
+        } else {
+            \Log::error("Contract {$id} has no rental_space_id!");
+        }
 
         // Create notification for tenant
         $tenant = $contract->tenant;
@@ -321,6 +553,9 @@ class ContractController extends Controller
 
         AuditLog::log('update', 'Contract', $contract->id, "Terminated contract: {$contract->contract_number}. Reason: {$request->reason}", ['status' => $oldStatus], ['status' => 'terminated']);
 
+        // Refresh relationships to get latest data
+        $contract->refresh();
+        
         return response()->json([
             'success' => true,
             'message' => 'Contract terminated successfully',
@@ -411,5 +646,138 @@ class ContractController extends Controller
             'message' => 'Contract renewed successfully',
             'data' => $newContract->load(['tenant.user', 'rentalSpace'])
         ], 201);
+    }
+
+    /**
+     * Generate and get QR code for contract
+     */
+    public function getQRCode($id)
+    {
+        try {
+            $contract = Contract::with(['tenant.user', 'rentalSpace'])->findOrFail($id);
+
+            // Create QR code data - point directly to the lease PDF using network IP (for phone scanning)
+            $qrBaseUrl = env('QR_BASE_URL', config('app.url'));
+            $qrData = $qrBaseUrl . '/api/contracts/' . $contract->id . '/lease';
+
+            // Generate QR code
+            $qrCode = new QrCode($qrData);
+            $writer = new SvgWriter();
+            $qrSvg = $writer->write($qrCode);
+            
+            // Convert SVG to string
+            $svgString = $qrSvg->getString();
+            
+            // Convert to data URI
+            $dataUri = 'data:image/svg+xml;base64,' . base64_encode($svgString);
+
+            // Return QR code data URI
+            return response()->json([
+                'success' => true,
+                'qrCode' => $dataUri,
+                'data' => [
+                    'contract_id' => $contract->id,
+                    'contract_number' => $contract->contract_number,
+                    'tenant' => $contract->tenant->contact_person,
+                    'rental_space' => $contract->rentalSpace->space_code,
+                    'start_date' => $contract->start_date,
+                    'end_date' => $contract->end_date,
+                    'monthly_rental' => $contract->monthly_rental,
+                    'status' => $contract->status,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate QR code: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Public endpoint to view contract details via QR code
+     * No authentication required
+     */
+    public function viewQRContract($id)
+    {
+        try {
+            $contract = Contract::with([
+                'tenant.user',
+                'rentalSpace'
+            ])->findOrFail($id);
+
+            // Return contract details in camelCase for frontend
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $contract->id,
+                    'contractNumber' => $contract->contract_number,
+                    'tenant' => [
+                        'id' => $contract->tenant->id,
+                        'contactPerson' => $contract->tenant->contact_person,
+                        'businessName' => $contract->tenant->business_name,
+                        'contactNumber' => $contract->tenant->contact_number,
+                    ],
+                    'rentalSpace' => [
+                        'id' => $contract->rentalSpace->id,
+                        'spaceCode' => $contract->rentalSpace->space_code,
+                        'spaceType' => $contract->rentalSpace->space_type,
+                        'sizeSqm' => $contract->rentalSpace->size_sqm,
+                    ],
+                    'startDate' => $contract->start_date?->format('Y-m-d'),
+                    'endDate' => $contract->end_date?->format('Y-m-d'),
+                    'monthlyRental' => $contract->monthly_rental,
+                    'securityDeposit' => $contract->deposit_amount,
+                    'status' => $contract->status,
+                    'terms' => $contract->terms,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Contract not found'
+            ], 404);
+        }
+    }
+
+    /**
+     * Download lease PDF for a contract
+     */
+    public function downloadLease($id)
+    {
+        try {
+            $contract = Contract::with(['tenant.user', 'rentalSpace'])->findOrFail($id);
+
+            // Prepare data for the lease document
+            $data = [
+                'contractNumber' => $contract->contract_number,
+                'contractDate' => $contract->created_at->format('F d, Y'),
+                'startDate' => $contract->start_date->format('F d, Y'),
+                'endDate' => $contract->end_date->format('F d, Y'),
+                'tenantName' => $contract->tenant->contact_person,
+                'tenantCompany' => $contract->tenant->business_name,
+                'tenantAddress' => $contract->tenant->business_address ?? 'Not provided',
+                'tenantPhone' => $contract->tenant->contact_number,
+                'spaceName' => $contract->rentalSpace->name,
+                'spaceCode' => $contract->rentalSpace->space_code,
+                'spaceType' => $contract->rentalSpace->space_type,
+                'spaceSqm' => $contract->rentalSpace->size_sqm ?? 'N/A',
+                'monthlyRent' => number_format($contract->monthly_rental, 2),
+                'securityDeposit' => number_format($contract->deposit_amount ?? 0, 2),
+                'terms' => $contract->terms ?? 'Standard lease terms apply. Tenant agrees to maintain the premises in good condition and pay rent on time.',
+                'totalDurationMonths' => $contract->start_date->diffInMonths($contract->end_date),
+            ];
+
+            // Generate PDF
+            $pdf = \PDF::loadView('contracts.lease', $data);
+            
+            // Return PDF to view in browser (for QR scanning on mobile)
+            return $pdf->stream('lease-' . $contract->contract_number . '.pdf');
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate lease: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

@@ -8,7 +8,6 @@ use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Illuminate\Support\Facades\Storage;
 
 class TenantController extends Controller
@@ -60,35 +59,120 @@ class TenantController extends Controller
      */
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        // Log incoming request for debugging
+        \Log::info('Tenant store request received', [
+            'raw_input' => $request->all(),
+            'headers' => $request->headers->all()
+        ]);
+
+        // Map frontend field names (camelCase) to backend field names (snake_case)
+        $data = $request->all();
+        
+        // Map camelCase to snake_case for all fields
+        if (isset($data['firstName']) && !isset($data['first_name'])) {
+            $data['first_name'] = $data['firstName'];
+        }
+        if (isset($data['lastName']) && !isset($data['last_name'])) {
+            $data['last_name'] = $data['lastName'];
+        }
+        if (isset($data['businessName']) && !isset($data['business_name'])) {
+            $data['business_name'] = $data['businessName'];
+        }
+        if (isset($data['businessType']) && !isset($data['business_type'])) {
+            $data['business_type'] = $data['businessType'];
+        }
+        if (isset($data['businessAddress']) && !isset($data['business_address'])) {
+            $data['business_address'] = $data['businessAddress'];
+        }
+        if (isset($data['contactPerson']) && !isset($data['contact_person'])) {
+            $data['contact_person'] = $data['contactPerson'];
+        }
+        if (isset($data['contactNumber']) && !isset($data['contact_number'])) {
+            $data['contact_number'] = $data['contactNumber'];
+        }
+
+        // Map contactNumber to phone for user table
+        if (isset($data['contactNumber']) && !isset($data['phone'])) {
+            $data['phone'] = $data['contactNumber'];
+        }
+        
+        // Combine firstName and lastName into name field
+        $firstName = $data['first_name'] ?? $data['firstName'] ?? '';
+        $lastName = $data['last_name'] ?? $data['lastName'] ?? '';
+        $data['name'] = trim("{$firstName} {$lastName}");
+        
+        // Ensure contact_person is set (required field)
+        if (empty($data['contact_person'])) {
+            $data['contact_person'] = $data['name'] ?? '';
+        }
+        
+        // Ensure business_name is set (required field)
+        if (empty($data['business_name'])) {
+            $data['business_name'] = $data['contact_person'] ?? $data['name'] ?? '';
+        }
+
+        \Log::info('Mapped tenant data', [
+            'received_data' => $data,
+            'firstName' => $firstName,
+            'lastName' => $lastName,
+            'combined_name' => $data['name'],
+            'contact_person' => $data['contact_person'] ?? 'NOT SET',
+            'business_name' => $data['business_name'] ?? 'NOT SET'
+        ]);
+
+        // Validate the request
+        $validator = Validator::make($data, [
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
-            'phone' => 'required|string|max:20',
+            'phone' => 'nullable|string|max:20',
             'address' => 'nullable|string',
             'business_name' => 'required|string|max:255',
             'business_type' => 'nullable|string|max:255',
             'tin' => 'nullable|string|max:50',
             'business_address' => 'nullable|string',
             'contact_person' => 'required|string|max:255',
-            'contact_number' => 'required|string|max:20',
+            'contact_number' => 'nullable|string|max:20',
         ]);
 
         if ($validator->fails()) {
+            \Log::error('Tenant validation failed', [
+                'errors' => $validator->errors()->all(),
+                'data' => $data,
+                'name_field' => $data['name'] ?? 'NOT SET',
+                'contact_person_field' => $data['contact_person'] ?? 'NOT SET',
+                'business_name_field' => $data['business_name'] ?? 'NOT SET',
+                'message' => implode(', ', $validator->errors()->all())
+            ]);
+            
+            // Create a more helpful error message
+            $errorDetails = [];
+            if ($validator->errors()->has('name')) {
+                $errorDetails[] = "Name field (combined from firstName + lastName): " . ($data['name'] ?? 'EMPTY');
+            }
+            if ($validator->errors()->has('contact_person')) {
+                $errorDetails[] = "Contact Person: " . ($data['contact_person'] ?? 'EMPTY');
+            }
+            if ($validator->errors()->has('business_name')) {
+                $errorDetails[] = "Business Name: " . ($data['business_name'] ?? 'EMPTY');
+            }
+            
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'message' => 'Validation failed: ' . implode(', ', $validator->errors()->all()),
+                'errors' => $validator->errors(),
+                'debug' => $errorDetails
             ], 422);
         }
 
         // Create user account
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
             'role' => 'tenant',
-            'phone' => $request->phone,
-            'address' => $request->address,
+            'phone' => $data['phone'] ?? $data['contact_number'] ?? null,
+            'address' => $data['address'] ?? null,
             'status' => 'active',
         ]);
 
@@ -96,17 +180,22 @@ class TenantController extends Controller
         $tenant = Tenant::create([
             'user_id' => $user->id,
             'tenant_code' => 'TEN-' . date('Y') . '-' . str_pad(Tenant::count() + 1, 4, '0', STR_PAD_LEFT),
-            'business_name' => $request->business_name,
-            'business_type' => $request->business_type,
-            'tin' => $request->tin,
-            'business_address' => $request->business_address,
-            'contact_person' => $request->contact_person,
-            'contact_number' => $request->contact_number,
+            'business_name' => $data['business_name'],
+            'business_type' => $data['business_type'] ?? null,
+            'tin' => $data['tin'] ?? null,
+            'business_address' => $data['business_address'] ?? null,
+            'contact_person' => $data['contact_person'],
+            'contact_number' => $data['contact_number'] ?? $data['phone'] ?? $data['contact_person'] ?? $data['name'] ?? '0000000000',
             'status' => 'active',
         ]);
 
-        // Generate QR Code
-        $this->generateQRCode($tenant);
+        // Generate QR Code (with error handling for missing imagick extension)
+        try {
+            $this->generateQRCode($tenant);
+        } catch (\Exception $e) {
+            // Log the error but don't fail tenant creation if QR code generation fails
+            \Log::warning("QR Code generation failed for tenant {$tenant->id}: " . $e->getMessage());
+        }
 
         AuditLog::log('create', 'Tenant', $tenant->id, "Created tenant: {$tenant->business_name}", null, $tenant->toArray());
 
@@ -124,7 +213,9 @@ class TenantController extends Controller
     {
         $tenant = Tenant::with([
             'user',
-            'contracts.rentalSpace',
+            'contracts' => function ($query) {
+                $query->with('rentalSpace')->orderBy('created_at', 'desc');
+            },
             'payments',
             'activeContracts',
             'overduePayments'
@@ -145,7 +236,47 @@ class TenantController extends Controller
     {
         $tenant = Tenant::findOrFail($id);
 
-        $validator = Validator::make($request->all(), [
+        // Map camelCase input fields to snake_case database field names
+        $data = $request->all();
+        
+        // Map personal name fields
+        if (isset($data['firstName'])) {
+            $data['contact_person'] = $data['firstName'];
+            unset($data['firstName']);
+        }
+        
+        if (isset($data['lastName'])) {
+            // lastName not stored in DB, just remove it
+            unset($data['lastName']);
+        }
+        
+        // Map business-related fields
+        if (isset($data['businessName'])) {
+            $data['business_name'] = $data['businessName'];
+            unset($data['businessName']);
+        }
+        
+        if (isset($data['businessType'])) {
+            $data['business_type'] = $data['businessType'];
+            unset($data['businessType']);
+        }
+        
+        if (isset($data['businessAddress'])) {
+            $data['business_address'] = $data['businessAddress'];
+            unset($data['businessAddress']);
+        }
+        
+        if (isset($data['contactPerson'])) {
+            $data['contact_person'] = $data['contactPerson'];
+            unset($data['contactPerson']);
+        }
+        
+        if (isset($data['contactNumber'])) {
+            $data['contact_number'] = $data['contactNumber'];
+            unset($data['contactNumber']);
+        }
+
+        $validator = Validator::make($data, [
             'business_name' => 'sometimes|string|max:255',
             'business_type' => 'sometimes|string|max:255',
             'tin' => 'sometimes|string|max:50',
@@ -163,7 +294,7 @@ class TenantController extends Controller
         }
 
         $oldValues = $tenant->toArray();
-        $tenant->update($request->all());
+        $tenant->update($data);
 
         AuditLog::log('update', 'Tenant', $tenant->id, "Updated tenant: {$tenant->business_name}", $oldValues, $tenant->toArray());
 
@@ -197,26 +328,37 @@ class TenantController extends Controller
      */
     public function generateQRCode($tenant)
     {
-        $qrData = json_encode([
-            'tenant_code' => $tenant->tenant_code,
-            'business_name' => $tenant->business_name,
-            'contact_person' => $tenant->contact_person,
-            'contact_number' => $tenant->contact_number,
-        ]);
+        // Check if QrCode class is available
+        if (!class_exists('SimpleSoftwareIO\QrCode\Facades\QrCode')) {
+            \Log::warning("QrCode package not installed, skipping QR code generation for tenant {$tenant->id}");
+            return null;
+        }
 
-        $qrCode = QrCode::format('png')
-            ->size(300)
-            ->generate($qrData);
+        try {
+            $qrData = json_encode([
+                'tenant_code' => $tenant->tenant_code,
+                'business_name' => $tenant->business_name,
+                'contact_person' => $tenant->contact_person,
+                'contact_number' => $tenant->contact_number,
+            ]);
 
-        $filename = 'qr-' . $tenant->tenant_code . '.png';
-        $path = 'qrcodes/' . $filename;
+            $qrCode = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
+                ->size(300)
+                ->generate($qrData);
 
-        Storage::disk('public')->put($path, $qrCode);
+            $filename = 'qr-' . $tenant->tenant_code . '.png';
+            $path = 'qrcodes/' . $filename;
 
-        $tenant->qr_code = $path;
-        $tenant->save();
+            Storage::disk('public')->put($path, $qrCode);
 
-        return $path;
+            $tenant->qr_code = $path;
+            $tenant->save();
+
+            return $path;
+        } catch (\Exception $e) {
+            \Log::warning("QR code generation failed for tenant {$tenant->id}: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**

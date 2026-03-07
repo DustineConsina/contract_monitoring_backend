@@ -58,6 +58,14 @@ class Payment extends Model
     }
 
     /**
+     * Get the demand letters for this payment.
+     */
+    public function demandLetters()
+    {
+        return $this->hasMany(DemandLetter::class);
+    }
+
+    /**
      * Check if payment is overdue.
      */
     public function isOverdue()

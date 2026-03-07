@@ -61,6 +61,14 @@ class Contract extends Model
     }
 
     /**
+     * Get the demand letters for the contract.
+     */
+    public function demandLetters()
+    {
+        return $this->hasMany(DemandLetter::class);
+    }
+
+    /**
      * Get pending payments.
      */
     public function pendingPayments()
@@ -126,39 +134,66 @@ class Contract extends Model
 
     /**
      * Generate payment schedules for the contract.
+     * Billing periods based on contract start date anniversary.
      */
     public function generatePaymentSchedule()
     {
         $startDate = Carbon::parse($this->start_date);
         $endDate = Carbon::parse($this->end_date);
-        $currentDate = $startDate->copy();
+        $monthCount = 0;
 
-        while ($currentDate->lte($endDate)) {
-            $periodStart = $currentDate->copy();
-            $periodEnd = $currentDate->copy()->endOfMonth();
+        while ($monthCount < 60) { // Limit to 60 months
+            // Period runs from contract anniversary to next anniversary
+            $periodStart = $startDate->copy()->addMonths($monthCount);
+            $periodEnd = $startDate->copy()->addMonths($monthCount + 1);
+            
+            // Stop if period goes beyond contract end date
+            if ($periodStart->gt($endDate)) {
+                break;
+            }
             
             if ($periodEnd->gt($endDate)) {
-                $periodEnd = $endDate;
+                $periodEnd = $endDate->copy();
             }
 
-            $dueDate = $periodEnd->copy()->addDays(5); // Due 5 days after period end
+            // Check if payment already exists for this period
+            $existingPayment = Payment::where('contract_id', $this->id)
+                ->whereDate('billing_period_start', $periodStart)
+                ->first();
+            
+            if ($existingPayment) {
+                $monthCount++;
+                continue; // Skip if already exists
+            }
 
-            Payment::create([
-                'payment_number' => 'PAY-' . date('Y') . '-' . str_pad(Payment::count() + 1, 6, '0', STR_PAD_LEFT),
+            // Due date is on the contract anniversary (one month from period start)
+            $dueDate = $periodEnd->copy();
+
+            // Get the next sequential payment number
+            $lastPayment = Payment::orderBy('id', 'desc')->first();
+            $nextNumber = ($lastPayment ? intval(substr($lastPayment->payment_number, -6)) : 0) + 1;
+            $paymentNumber = 'PAY-' . date('Y') . '-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+
+            // Create payment without due_date (will set separately)
+            $payment = Payment::create([
+                'payment_number' => $paymentNumber,
                 'contract_id' => $this->id,
                 'tenant_id' => $this->tenant_id,
                 'billing_period_start' => $periodStart,
                 'billing_period_end' => $periodEnd,
-                'due_date' => $dueDate,
                 'amount_due' => $this->monthly_rental,
-                'interest_amount' => 0,
-                'total_amount' => $this->monthly_rental,
+                'interest_amount' => $this->monthly_rental * 0.03,
+                'total_amount' => $this->monthly_rental * 1.03,
                 'amount_paid' => 0,
-                'balance' => $this->monthly_rental,
+                'balance' => $this->monthly_rental * 1.03,
                 'status' => 'pending',
             ]);
+            
+            // Set due_date directly (since it's protected from mass assignment)
+            $payment->due_date = $dueDate;
+            $payment->save();
 
-            $currentDate->addMonth();
+            $monthCount++;
         }
     }
 }

@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\ContractController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\CashierController;
 use App\Http\Controllers\RentalSpaceController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\NotificationController;
@@ -22,6 +23,8 @@ use App\Http\Controllers\ReportController;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/qr-scan', [TenantController::class, 'scanQRCode']);
+Route::get('/contracts/{id}/view', [ContractController::class, 'viewQRContract']);
+Route::get('/contracts/{id}/lease', [ContractController::class, 'downloadLease']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -40,17 +43,26 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Contracts
     Route::apiResource('contracts', ContractController::class);
+    Route::get('/contracts/{id}/qr-code', [ContractController::class, 'getQRCode']);
     Route::post('/contracts/{id}/activate', [ContractController::class, 'activate']);
     Route::post('/contracts/{id}/terminate', [ContractController::class, 'terminate']);
     Route::post('/contracts/{id}/renew', [ContractController::class, 'renew']);
 
     // Payments
-    Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
+    Route::apiResource('payments', PaymentController::class)->only(['index', 'show', 'store']);
+    Route::put('/payments/{id}', [PaymentController::class, 'update']);
+    Route::patch('/payments/{id}', [PaymentController::class, 'update']);
     Route::post('/payments/{id}/record', [PaymentController::class, 'recordPayment']);
     Route::patch('/payments/{id}/status', [PaymentController::class, 'updateStatus']);
     Route::post('/payments/calculate-overdue', [PaymentController::class, 'calculateOverduePayments']);
+    Route::get('/payable-contracts', [PaymentController::class, 'getPayableContracts']);
     Route::get('/tenants/{id}/payment-summary', [PaymentController::class, 'getTenantPaymentSummary']);
     Route::get('/tenants/{id}/payment-history', [PaymentController::class, 'getPaymentHistory']);
+    
+    // Demand Letters - New Routes
+    Route::get('/contracts/{contractId}/demand-letters', [PaymentController::class, 'listDemandLetters']);
+    Route::get('/demand-letters/{demandLetterId}/download', [PaymentController::class, 'downloadDemandLetter']);
+    Route::get('/contracts/{contractId}/payment-summary', [PaymentController::class, 'getContractPaymentSummary']);
 
     // Rental Spaces
     Route::apiResource('rental-spaces', RentalSpaceController::class);
@@ -75,14 +87,27 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications', [NotificationController::class, 'deleteAll']);
 
-    // Reports (Admin/Staff only)
+    // Reports
+    Route::get('/reports/dashboard-stats', [ReportController::class, 'dashboardStats']);
+    Route::middleware('role:admin,staff,cashier')->group(function () {
+        Route::get('/reports/payments', [ReportController::class, 'paymentsReport']);
+    });
+    
+    // Reports - Admin/Staff only
     Route::middleware('role:admin,staff')->group(function () {
         Route::get('/reports/contracts', [ReportController::class, 'contractsReport']);
-        Route::get('/reports/payments', [ReportController::class, 'paymentsReport']);
         Route::get('/reports/delinquency', [ReportController::class, 'delinquencyReport']);
         Route::get('/reports/revenue', [ReportController::class, 'revenueReport']);
         Route::get('/reports/tenants', [ReportController::class, 'tenantsReport']);
         Route::get('/reports/expiring-contracts', [ReportController::class, 'expiringContractsReport']);
         Route::get('/reports/audit-log', [ReportController::class, 'auditLogReport']);
+    });
+
+    // Cashier routes
+    Route::middleware('role:cashier,admin,staff')->group(function () {
+        Route::get('/cashier/todays-collection', [CashierController::class, 'getTodaysCollection']);
+        Route::get('/cashier/collectibles', [CashierController::class, 'getCollectibles']);
+        Route::post('/cashier/payments/{id}/record', [CashierController::class, 'recordPayment']);
+        Route::get('/cashier/payments/{id}/receipt', [CashierController::class, 'getReceipt']);
     });
 });

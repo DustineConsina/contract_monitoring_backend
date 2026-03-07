@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Payment;
 use App\Models\Contract;
+use App\Models\DemandLetter;
 use App\Models\AuditLog;
 use App\Models\Notification;
 use Illuminate\Http\Request;
@@ -91,6 +92,293 @@ class PaymentController extends Controller
     }
 
     /**
+     * Get contracts with pending payments for dropdown in payment recording form
+     */
+    public function getPayableContracts(Request $request)
+    {
+        $contracts = Contract::with(['tenant.user', 'rentalSpace', 'payments'])
+            ->where('status', 'active')
+            ->has('payments') // Only contracts that have payments
+            ->get()
+            ->map(function ($contract) {
+                // Get pending/overdue payments count
+                $pendingPayments = $contract->payments()
+                    ->whereIn('status', ['pending', 'overdue', 'partial'])
+                    ->count();
+                
+                // Get outstanding balance
+                $balance = $contract->payments()
+                    ->where('balance', '>', 0)
+                    ->sum('balance');
+                
+                return [
+                    'id' => $contract->id,
+                    'contract_number' => $contract->contract_number,
+                    'tenant_name' => $contract->tenant->business_name ?? 'Unknown',
+                    'rental_space' => $contract->rentalSpace->name ?? 'Unknown',
+                    'pending_count' => $pendingPayments,
+                    'outstanding_balance' => $balance,
+                    'label' => "{$contract->contract_number} - {$contract->tenant->business_name} ({$pendingPayments} pending)"
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'data' => $contracts
+        ]);
+    }
+
+    /**
+     * Create a new payment
+     */
+    public function store(Request $request)
+    {
+        // Map camelCase to snake_case
+        $data = $request->all();
+        
+        if (isset($data['contractId'])) {
+            $data['contract_id'] = $data['contractId'];
+            unset($data['contractId']);
+        }
+        
+        if (isset($data['tenantId'])) {
+            $data['tenant_id'] = $data['tenantId'];
+            unset($data['tenantId']);
+        }
+        
+        if (isset($data['dueDate'])) {
+            $data['due_date'] = $data['dueDate'];
+            unset($data['dueDate']);
+        }
+        
+        if (isset($data['paidDate'])) {
+            $data['payment_date'] = $data['paidDate'];
+            unset($data['paidDate']);
+        }
+        
+        if (isset($data['paymentMethod'])) {
+            $data['payment_method'] = $data['paymentMethod'];
+            unset($data['paymentMethod']);
+        }
+        
+        if (isset($data['notes']) || isset($data['remarks'])) {
+            $data['remarks'] = $data['notes'] ?? $data['remarks'] ?? null;
+            unset($data['notes']);
+        }
+        
+        // Use amount as amount_due if not specified
+        if (isset($data['amount']) && !isset($data['amount_due'])) {
+            $data['amount_due'] = $data['amount'];
+            unset($data['amount']);
+        }
+        
+        // Get contract to extract tenant_id if not provided
+        if (!isset($data['tenant_id']) && isset($data['contract_id'])) {
+            $contract = Contract::find($data['contract_id']);
+            if ($contract) {
+                $data['tenant_id'] = $contract->tenant_id;
+            }
+        }
+        
+        $validator = Validator::make($data, [
+            'contract_id' => 'required|exists:contracts,id',
+            'tenant_id' => 'required|exists:tenants,id',
+            'amount_due' => 'required|numeric|min:0',
+            'due_date' => 'required|date',
+            'billing_period_start' => 'sometimes|date',
+            'billing_period_end' => 'sometimes|date',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Create payment record with 3% interest on monthly rent
+        $interestRate = 0.03; // 3%
+        $interest = $data['amount_due'] * $interestRate;
+        $totalWithInterest = $data['amount_due'] + $interest;
+        
+        // Generate unique payment number
+        $year = date('Y');
+        $lastPayment = Payment::where('payment_number', 'LIKE', 'PAY-' . $year . '-%')
+            ->orderByRaw("CAST(SUBSTRING(payment_number, -6) AS UNSIGNED) DESC")
+            ->first();
+        
+        if ($lastPayment) {
+            $lastNumber = (int)substr($lastPayment->payment_number, -6);
+            $nextNumber = $lastNumber + 1;
+        } else {
+            $nextNumber = 1;
+        }
+        
+        $paymentNumber = 'PAY-' . $year . '-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+        
+        // If payment_date is provided, it means payment was already made, so set amount_paid to total
+        $isPaid = isset($data['payment_date']) && $data['payment_date'] !== null;
+        $amountPaid = $isPaid ? $totalWithInterest : 0;
+        $remainingBalance = $totalWithInterest - $amountPaid;
+        
+        $payment = Payment::create([
+            'payment_number' => $paymentNumber,
+            'contract_id' => $data['contract_id'],
+            'tenant_id' => $data['tenant_id'],
+            'amount_due' => $data['amount_due'],
+            'interest_amount' => $interest,
+            'due_date' => $data['due_date'],
+            'billing_period_start' => $data['billing_period_start'] ?? now(),
+            'billing_period_end' => $data['billing_period_end'] ?? now(),
+            'total_amount' => $totalWithInterest,
+            'amount_paid' => $amountPaid,
+            'balance' => $remainingBalance,
+            'payment_method' => $data['payment_method'] ?? null,
+            'remarks' => $data['remarks'] ?? null,
+            'payment_date' => $data['payment_date'] ?? null,
+            'status' => $isPaid ? 'paid' : 'pending',
+        ]);
+
+        AuditLog::log('create', 'Payment', $payment->id, "Created payment: {$payment->payment_number}");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment created successfully',
+            'data' => $payment->fresh(['tenant.user', 'contract.rentalSpace'])
+        ], 201);
+    }
+
+    /**
+     * Update a payment
+     */
+    public function update(Request $request, $id)
+    {
+        $payment = Payment::findOrFail($id);
+        
+        // Map camelCase to snake_case
+        $data = $request->all();
+        
+        // NEVER allow due_date to be updated - it's auto-calculated based on contract start date
+        if (isset($data['due_date'])) {
+            unset($data['due_date']);
+        }
+        if (isset($data['dueDate'])) {
+            unset($data['dueDate']);
+        }
+        
+        // Handle amount from frontend (new format)
+        if (isset($data['amount']) && !isset($data['amount_to_pay'])) {
+            $data['amount_to_pay'] = $data['amount'];
+            unset($data['amount']);
+        }
+        
+        if (isset($data['amountPaid'])) {
+            $data['amount_paid'] = $data['amountPaid'];
+            unset($data['amountPaid']);
+        }
+        
+        // Also handle amount_to_pay from frontend
+        if (isset($data['amount_to_pay']) && !isset($data['amount_paid'])) {
+            $data['amount_paid'] = $data['amount_to_pay'];
+            unset($data['amount_to_pay']);
+        }
+        
+        if (isset($data['paymentMethod'])) {
+            $data['payment_method'] = $data['paymentMethod'];
+            unset($data['paymentMethod']);
+        }
+        
+        if (isset($data['referenceNumber'])) {
+            $data['reference_number'] = $data['referenceNumber'];
+            unset($data['referenceNumber']);
+        }
+        
+        if (isset($data['paidDate'])) {
+            $data['payment_date'] = $data['paidDate'];
+            unset($data['paidDate']);
+        }
+        
+        if (isset($data['notes']) || isset($data['remarks'])) {
+            $data['remarks'] = $data['notes'] ?? $data['remarks'] ?? null;
+            unset($data['notes']);
+        }
+        
+        $validator = Validator::make($data, [
+            'amount_paid' => 'sometimes|numeric|min:0',
+            'status' => 'sometimes|in:pending,paid,partial,overdue',
+            'payment_method' => 'sometimes|string',
+            'reference_number' => 'sometimes|nullable|string|max:255',
+            'remarks' => 'sometimes|nullable|string',
+            'payment_date' => 'sometimes|date',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $oldValues = $payment->toArray();
+
+        // Update amount paid if provided
+        if (isset($data['amount_paid'])) {
+            // Add the payment amount to existing total
+            $payment->amount_paid += $data['amount_paid'];
+            
+            // Recalculate balance: total_amount (which includes 3% interest) - amount_paid
+            $payment->balance = max(0, $payment->total_amount - $payment->amount_paid);
+            
+            // Update status based on total amount paid (including interest)
+            if ($payment->amount_paid >= $payment->total_amount) {
+                $payment->status = 'paid';
+                $payment->payment_date = $payment->payment_date ?? now();
+            } elseif ($payment->amount_paid > 0) {
+                $payment->status = 'partial';
+            } else {
+                $payment->status = 'pending';
+            }
+            
+            // Mark as overdue if past due date and not fully paid
+            if ($payment->status !== 'paid' && now()->isAfter($payment->due_date)) {
+                $payment->status = 'overdue';
+            }
+        }
+
+        // Update status if provided (and not overridden by amount_paid logic above)
+        if (isset($data['status']) && !isset($data['amount_paid'])) {
+            $payment->status = $data['status'];
+        }
+
+        // Update other fields
+        if (isset($data['payment_method'])) {
+            $payment->payment_method = $data['payment_method'];
+        }
+        if (isset($data['reference_number'])) {
+            $payment->reference_number = $data['reference_number'];
+        } elseif (isset($data['amount_paid']) && isset($data['payment_method'])) {
+            // Auto-generate reference number if recording payment without one
+            $payment->reference_number = $this->generateReferenceNumber($data['payment_method']);
+        }
+        if (isset($data['remarks'])) {
+            $payment->remarks = $data['remarks'];
+        }
+        if (isset($data['payment_date'])) {
+            $payment->payment_date = $data['payment_date'];
+        }
+
+        $payment->save();
+
+        AuditLog::log('update', 'Payment', $payment->id, "Updated payment: {$payment->payment_number}", $oldValues, $payment->toArray());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment updated successfully',
+            'data' => $payment->fresh(['tenant.user', 'contract.rentalSpace'])
+        ]);
+    }
+
+    /**
      * Record a payment
      */
     public function recordPayment(Request $request, $id)
@@ -132,11 +420,14 @@ class PaymentController extends Controller
             ], 422);
         }
 
+        // Generate reference number if not provided
+        $referenceNumber = $request->reference_number ?: $this->generateReferenceNumber($request->payment_method);
+
         // Record the payment
         $payment->recordPayment(
             $request->amount,
             $request->payment_method,
-            $request->reference_number,
+            $referenceNumber,
             $request->remarks
         );
 
@@ -265,4 +556,181 @@ class PaymentController extends Controller
             'data' => $payments
         ]);
     }
+
+    /**
+     * Get all demand letters for a contract
+     */
+    public function listDemandLetters($contractId)
+    {
+        $contract = Contract::findOrFail($contractId);
+        
+        $demandLetters = $contract->demandLetters()
+            ->with('payment', 'tenant')
+            ->orderBy('issued_date', 'desc')
+            ->get()
+            ->map(function ($letter) {
+                return [
+                    'id' => $letter->id,
+                    'demand_number' => $letter->demand_number,
+                    'issued_date' => $letter->issued_date->format('M d, Y'),
+                    'due_date' => $letter->due_date->format('M d, Y'),
+                    'outstanding_balance' => (float) $letter->outstanding_balance,
+                    'total_amount_demanded' => (float) $letter->total_amount_demanded,
+                    'status' => $letter->status,
+                    'sent_date' => $letter->sent_date ? $letter->sent_date->format('M d, Y H:i') : null,
+                    'days_remaining' => $letter->due_date->diffInDays(Carbon::now()),
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'data' => $demandLetters
+        ]);
+    }
+
+    /**
+     * Get contract payment summary with rental info
+     */
+    public function getContractPaymentSummary($contractId)
+    {
+        $contract = Contract::with('tenant', 'rentalSpace')->findOrFail($contractId);
+        
+        $payments = $contract->payments()->get();
+        $totalOutstanding = $payments->where('status', '!=', 'paid')->sum('balance');
+        $totalInterest = $payments->sum('interest_amount');
+
+        // Calculate rent breakdown
+        $baseRent = $contract->monthly_rental;
+        $totalRentWithInterest = $baseRent * 1.03; // Base + 3% interest
+        $interestComponent = $baseRent * 0.03;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'contract_number' => $contract->contract_number,
+                'tenant_name' => $contract->tenant->business_name,
+                'space_name' => $contract->rentalSpace->name,
+                'base_monthly_rent' => (float) $baseRent,
+                'interest_percentage' => 3,
+                'interest_amount_per_month' => (float) $interestComponent,
+                'monthly_billing_amount' => (float) $totalRentWithInterest,
+                'billing_description' => 'Monthly rent includes 3% built-in interest',
+                'lease_period' => "{$contract->start_date->format('M d, Y')} - {$contract->end_date->format('M d, Y')}",
+                'total_payments' => $payments->count(),
+                'paid_payments' => $payments->where('status', 'paid')->count(),
+                'pending_payments' => $payments->where('status', 'pending')->count(),
+                'overdue_payments' => $payments->where('status', 'overdue')->count(),
+                'total_billed' => (float) $payments->sum('amount_due'),
+                'total_interest_collected' => (float) $totalInterest,
+                'total_paid' => (float) $payments->sum('amount_paid'),
+                'total_outstanding' => (float) $totalOutstanding,
+                'demand_letters_issued' => $contract->demandLetters()->count(),
+            ]
+        ]);
+    }
+
+    /**
+     * Check if next month rent will have 3% penalty
+     */
+    private function hasPenaltyForNextMonth(Contract $contract)
+    {
+        // Get the current billing period based on contract anniversary
+        $contractStart = $contract->start_date;
+        $monthsElapsed = $contractStart->diffInMonths(Carbon::now());
+        
+        // Previous period ends on the current anniversary minus one month
+        $previousPeriodEnd = $contractStart->copy()->addMonths($monthsElapsed);
+        
+        $previousPayment = Payment::where('contract_id', $contract->id)
+            ->whereDate('billing_period_end', $previousPeriodEnd)
+            ->first();
+
+        return $previousPayment && ($previousPayment->status === 'overdue' || $previousPayment->balance > 0);
+    }
+
+    /**
+     * Get next month's rent amount (with penalty if applicable)
+     */
+    private function getNextMonthRent(Contract $contract)
+    {
+        $baseRent = $contract->monthly_rental;
+        
+        if ($this->hasPenaltyForNextMonth($contract)) {
+            return $baseRent + ($baseRent * 0.03); // Base + 3% penalty
+        }
+        
+        return $baseRent;
+    }
+
+    /**
+     * Download demand letter PDF
+     */
+    public function downloadDemandLetter($demandLetterId)
+    {
+        try {
+            $demandLetter = DemandLetter::with([
+                'payment.contract.rentalSpace',
+                'tenant.user'
+            ])->findOrFail($demandLetterId);
+
+            $payment = $demandLetter->payment;
+            $contract = $payment->contract;
+            $tenant = $demandLetter->tenant;
+
+            // Calculate days overdue
+            $daysOverdue = Carbon::now()->diffInDays($demandLetter->payment->due_date);
+
+            // Prepare data for PDF
+            $data = [
+                'demandNumber' => $demandLetter->demand_number,
+                'tenantName' => $tenant->contact_person,
+                'tenantCompany' => $tenant->business_name,
+                'tenantAddress' => $tenant->business_address ?? 'Not provided',
+                'tenantPhone' => $tenant->contact_number,
+                'spaceName' => $contract->rentalSpace->name,
+                'spaceCode' => $contract->rentalSpace->space_code,
+                'billingPeriod' => $payment->billing_period_start->format('F d, Y') . ' to ' . $payment->billing_period_end->format('F d, Y'),
+                'rentalAmount' => number_format($payment->amount_due, 2),
+                'interestAmount' => number_format($payment->interest_amount, 2),
+                'originalDueDate' => $payment->due_date->format('F d, Y'),
+                'daysOverdue' => max(0, $daysOverdue),
+                'totalAmountDemanded' => number_format($demandLetter->total_amount_demanded, 2),
+                'issuedDate' => $demandLetter->issued_date->format('F d, Y'),
+                'settlementDeadline' => $demandLetter->due_date->format('F d, Y'),
+                'contractDate' => $contract->created_at->format('F d, Y'),
+                'currentDate' => Carbon::now()->format('F d, Y'),
+                'generatedDate' => Carbon::now()->format('F d, Y h:i A'),
+            ];
+
+            // Generate PDF
+            $pdf = \PDF::loadView('demand-letters.letter', $data);
+            
+            // Return PDF to browser
+            return $pdf->stream('demand-letter-' . $demandLetter->demand_number . '.pdf');
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate demand letter: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate unique reference number for payment
+     */
+    private function generateReferenceNumber($paymentMethod)
+    {
+        $timestamp = now()->format('YmdHis');
+        $random = str_pad(rand(1000, 9999), 4, '0', STR_PAD_LEFT);
+        
+        $prefix = match($paymentMethod) {
+            'cash' => 'CASH',
+            'check' => 'CHK',
+            'bank_transfer' => 'BANK',
+            default => 'PAY'
+        };
+        
+        return "{$prefix}-{$timestamp}-{$random}";
+    }
 }
+
