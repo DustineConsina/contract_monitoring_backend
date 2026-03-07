@@ -99,6 +99,8 @@ class ContractController extends Controller
         if (isset($data['startDate'])) {
             $data['start_date'] = $data['startDate'];
             unset($data['startDate']);
+        } elseif (!isset($data['start_date']) && isset($data['start_date'])) {
+            // Already in snake_case, no need to convert
         }
         
         if (isset($data['durationMonths'])) {
@@ -107,10 +109,11 @@ class ContractController extends Controller
         }
         
         // If endDate provided but no duration_months, calculate it
-        if (isset($data['endDate']) && !isset($data['duration_months'])) {
-            if (isset($data['start_date'])) {
+        if ((isset($data['endDate']) || isset($data['end_date'])) && !isset($data['duration_months'])) {
+            $endDateField = isset($data['endDate']) ? $data['endDate'] : (isset($data['end_date']) ? $data['end_date'] : null);
+            if ($endDateField && isset($data['start_date'])) {
                 $startDate = Carbon::parse($data['start_date']);
-                $endDate = Carbon::parse($data['endDate']);
+                $endDate = Carbon::parse($endDateField);
                 $data['duration_months'] = intval($startDate->diffInMonths($endDate)) + 1;
             }
         }
@@ -118,37 +121,50 @@ class ContractController extends Controller
         if (isset($data['endDate'])) {
             unset($data['endDate']); // Remove endDate, we calculate it from duration
         }
+        if (isset($data['end_date'])) {
+            unset($data['end_date']); // Remove end_date, we calculate it from duration
+        }
         
-        // Handle monthlyRent/monthlyRental variations
+        // Handle monthlyRent/monthlyRental/monthly_rent variations (API client converts to monthly_rent)
         if (isset($data['monthlyRent'])) {
             $data['monthly_rental'] = $data['monthlyRent'];
             unset($data['monthlyRent']);
         } elseif (isset($data['monthlyRental'])) {
             $data['monthly_rental'] = $data['monthlyRental'];
             unset($data['monthlyRental']);
+        } elseif (isset($data['monthly_rent'])) {
+            $data['monthly_rental'] = $data['monthly_rent'];
+            unset($data['monthly_rent']);
         }
         
-        // Handle securityDeposit/depositAmount variations
+        // Handle securityDeposit/depositAmount/security_deposit variations (API client converts to security_deposit)
         if (isset($data['securityDeposit'])) {
             $data['deposit_amount'] = $data['securityDeposit'];
             unset($data['securityDeposit']);
         } elseif (isset($data['depositAmount'])) {
             $data['deposit_amount'] = $data['depositAmount'];
             unset($data['depositAmount']);
+        } elseif (isset($data['security_deposit'])) {
+            $data['deposit_amount'] = $data['security_deposit'];
+            unset($data['security_deposit']);
         }
         
         if (isset($data['interestRate'])) {
             $data['interest_rate'] = $data['interestRate'];
             unset($data['interestRate']);
+        } elseif (!isset($data['interest_rate']) && isset($data['interest_rate'])) {
+            // Already in snake_case, no need to convert
         }
         
-        // Handle terms/termsConditions variations
+        // Handle terms/termsConditions/terms_conditions variations
         if (isset($data['terms'])) {
             $data['terms_conditions'] = $data['terms'];
             unset($data['terms']);
         } elseif (isset($data['termsConditions'])) {
             $data['terms_conditions'] = $data['termsConditions'];
             unset($data['termsConditions']);
+        } elseif (!isset($data['terms_conditions']) && isset($data['terms_conditions'])) {
+            // Already in snake_case, no need to convert
         }
         
         // If tenantId (User ID) was provided, convert it to tenant_id (Tenant ID)
