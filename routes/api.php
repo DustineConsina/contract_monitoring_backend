@@ -21,7 +21,22 @@ use App\Http\Controllers\ReportController;
 
 // Health check
 Route::get('/', fn() => response()->json(['message' => 'PFDA Contract Monitoring API is running', 'status' => 'ok']));
-Route::get('/health', fn() => response()->json(['message' => 'PFDA Contract Monitoring API is running', 'status' => 'ok']));
+Route::get('/health', function() {
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        return response()->json([
+            'message' => 'PFDA Contract Monitoring API is running',
+            'status' => 'ok',
+            'database' => 'connected'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Database connection failed',
+            'status' => 'error',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+});
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
