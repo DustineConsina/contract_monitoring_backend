@@ -19,6 +19,11 @@ use App\Http\Controllers\ReportController;
 |--------------------------------------------------------------------------
 */
 
+// CORS preflight
+Route::options('{any}', function() {
+    return response()->json(['status' => 'ok']);
+})->where('any', '.*');
+
 // Health check
 Route::get('/', fn() => response()->json(['message' => 'PFDA Contract Monitoring API is running', 'status' => 'ok']));
 Route::get('/health', function() {
