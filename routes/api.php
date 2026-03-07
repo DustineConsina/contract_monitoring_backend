@@ -19,6 +19,10 @@ use App\Http\Controllers\ReportController;
 |--------------------------------------------------------------------------
 */
 
+// Health check
+Route::get('/', fn() => response()->json(['message' => 'PFDA Contract Monitoring API is running', 'status' => 'ok']));
+Route::get('/health', fn() => response()->json(['message' => 'PFDA Contract Monitoring API is running', 'status' => 'ok']));
+
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
