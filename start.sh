@@ -53,7 +53,15 @@ echo "Database Host: $DB_HOST"
 echo "Database Port: ${DB_PORT:-3306}"
 echo "Database Name: $DB_DATABASE"
 echo "Database User: $DB_USERNAME"
+echo "DB_PASSWORD set: $([ -z "$DB_PASSWORD" ] && echo 'NO' || echo 'YES')"
 echo "App URL: $APP_URL"
+echo ""
+echo "=== RAILWAY ENVIRONMENT VARIABLES (before override) ==="
+echo "MYSQLHOST: $MYSQLHOST"
+echo "MYSQLDATABASE: $MYSQLDATABASE"
+echo "MYSQLUSER: $MYSQLUSER"
+echo "MYSQLPASSWORD: $([ -z "$MYSQLPASSWORD" ] && echo 'NOT SET' || echo 'SET')"
+echo ""
 
 # Ensure storage directories exist and are writable
 mkdir -p storage/framework/{sessions,views,cache,testing} storage/logs bootstrap/cache
