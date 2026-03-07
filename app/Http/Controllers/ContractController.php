@@ -251,18 +251,33 @@ class ContractController extends Controller
      */
     public function show($id)
     {
-        $contract = Contract::with([
-            'tenant.user',
-            'rentalSpace',
-            'payments'
-        ])->findOrFail($id);
+        \Log::info('ContractController@show called with ID: ' . $id);
+        
+        try {
+            $contract = Contract::with([
+                'tenant.user',
+                'rentalSpace',
+                'payments'
+            ])->findOrFail($id);
 
-        AuditLog::log('view', 'Contract', $contract->id, "Viewed contract: {$contract->contract_number}");
+            \Log::info('Contract found', ['id' => $contract->id, 'number' => $contract->contract_number]);
+            \Log::info('Contract has tenant: ' . ($contract->tenant ? 'YES' : 'NO'));
+            \Log::info('Payments count: ' . (isset($contract->payments) ? count($contract->payments) : 'N/A'));
+            
+            AuditLog::log('view', 'Contract', $contract->id, "Viewed contract: {$contract->contract_number}");
 
-        return response()->json([
-            'success' => true,
-            'data' => $contract
-        ]);
+            $responseData = [
+                'success' => true,
+                'data' => $contract
+            ];
+            
+            \Log::info('Returning response', ['response_keys' => array_keys($responseData)]);
+            
+            return response()->json($responseData);
+        } catch (\Exception $e) {
+            \Log::error('Contract error: ' . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**

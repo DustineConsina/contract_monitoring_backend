@@ -1,58 +1,43 @@
 <?php
-
 require 'vendor/autoload.php';
+$app = require 'bootstrap/app.php';
+$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
 
-// Load Laravel
-$app = require_once 'bootstrap/app.php';
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-$kernel->bootstrap();
+use App\Models\Contract;
 
-use App\Models\Payment;
-use Illuminate\Http\Request;
+// Test what the API returns (simulating the controller)
+$contract = Contract::with(['tenant.user', 'rentalSpace', 'payments'])->first();
 
-echo "======================================\n";
-echo "Testing Payment API Response\n";
-echo "======================================\n\n";
-
-// Simulate what the API would return
-$payments = Payment::with(['contract', 'tenant'])
-    ->orderBy('due_date', 'asc')
-    ->limit(15)
-    ->get();
-
-echo "Total payments to be returned: " . $payments->count() . "\n\n";
-
-$response = [
-    'success' => true,
-    'data' => $payments->map(function ($payment) {
-        return [
-            'id' => $payment->id,
-            'payment_number' => $payment->payment_number,
-            'contract_id' => $payment->contract_id,
-            'status' => $payment->status,
-            'balance' => (float) $payment->balance,
-            'amount_due' => (float) $payment->amount_due,
-            'total_amount' => (float) $payment->total_amount,
-            'due_date' => $payment->due_date?->format('Y-m-d'),
-            'contract' => [
-                'id' => $payment->contract?->id,
-                'contract_number' => $payment->contract?->contract_number,
-            ]
-        ];
-    })->toArray()
-];
-
-echo "API Response Sample (first 5 payments):\n";
-echo json_encode(array_slice($response['data'], 0, 5), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-echo "\n\n";
-echo "===  LOOKING FOR OVERDUE PAYMENT ===\n";
-foreach ($response['data'] as $p) {
-    if ($p['status'] === 'overdue') {
-        echo "✓ FOUND OVERDUE PAYMENT!\n";
-        echo json_encode($p, JSON_PRETTY_PRINT);
-        break;
+if ($contract) {
+    // This is what gets returned to the frontend
+    $response = [
+        'success' => true,
+        'data' => $contract->toArray()
+    ];
+    
+    echo "=== API RESPONSE STRUCTURE ===\n";
+    echo "Contract ID: " . $response['data']['id'] . "\n";
+    echo "Has tenant: " . (isset($response['data']['tenant']) ? 'YES' : 'NO') . "\n";
+    
+    if (isset($response['data']['tenant'])) {
+        echo "  - business_name: " . ($response['data']['tenant']['business_name'] ?? 'NULL') . "\n";
+        echo "  - business_type: " . ($response['data']['tenant']['business_type'] ?? 'NULL') . "\n";
     }
+    
+    echo "\nHas payments array: " . (isset($response['data']['payments']) ? 'YES' : 'NO') . "\n";
+    if (isset($response['data']['payments'])) {
+        echo "  - Payment count: " . count($response['data']['payments']) . "\n";
+        if (count($response['data']['payments']) > 0) {
+            $firstPayment = $response['data']['payments'][0];
+            echo "  - First payment fields:\n";
+            echo "    * payment_number: " . ($firstPayment['payment_number'] ?? 'NULL') . "\n";
+            echo "    * amount_due: " . ($firstPayment['amount_due'] ?? 'NULL') . "\n";
+            echo "    * interest_amount: " . ($firstPayment['interest_amount'] ?? 'NULL') . "\n";
+            echo "    * total_amount: " . ($firstPayment['total_amount'] ?? 'NULL') . "\n";
+        }
+    } else {
+        echo "  ⚠️  PAYMENTS ARRAY IS MISSING!\n";
+    }
+} else {
+    echo "No contracts found\n";
 }
-
-echo "\n";
