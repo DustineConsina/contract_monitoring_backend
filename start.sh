@@ -51,7 +51,29 @@ echo "APP_KEY: ${APP_KEY:0:20}..."
 echo "Database Host: $DB_HOST"
 echo "Database Port: $DB_PORT"
 echo "Database Name: $DB_DATABASE"
+echo "Database User: $DB_USERNAME"
 echo "App URL: $APP_URL"
+
+# Override .env file with Railway environment variables (critical for Railway to work)
+cat > .env << EOF
+APP_NAME="PFDA Contract Monitoring System"
+APP_ENV=$APP_ENV
+APP_KEY=$APP_KEY
+APP_DEBUG=$APP_DEBUG
+APP_URL=$APP_URL
+FRONTEND_URL=${FRONTEND_URL:-https://contract-monitoring-frontend-b8t2.vercel.app}
+QR_BASE_URL=$APP_URL
+
+DB_CONNECTION=mysql
+DB_HOST=$DB_HOST
+DB_PORT=$DB_PORT
+DB_DATABASE=$DB_DATABASE
+DB_USERNAME=$DB_USERNAME
+DB_PASSWORD=$DB_PASSWORD
+
+LOG_CHANNEL=stack
+LOG_LEVEL=debug
+EOF
 
 # Ensure storage directories exist and are writable
 mkdir -p storage/framework/{sessions,views,cache,testing} storage/logs bootstrap/cache
