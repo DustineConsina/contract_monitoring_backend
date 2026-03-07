@@ -66,5 +66,8 @@ php artisan cache:clear 2>/dev/null || true
 echo "Running database migrations..."
 php artisan migrate --force 2>&1 || echo "Migration warning (DB might already exist)"
 
+echo "Seeding database..."
+php artisan db:seed --force 2>&1 || echo "Seeding warning (data might already exist)"
+
 echo "App is ready. Starting PHP server on port $PORT..."
 exec php artisan serve --host=0.0.0.0 --port=$PORT
