@@ -3,6 +3,10 @@ set -e
 
 echo "=== Starting PFDA Contract Monitoring Backend ==="
 
+# Set production environment
+export APP_ENV=${APP_ENV:-production}
+export APP_DEBUG=${APP_DEBUG:-true}
+
 # Map Railway variables to Laravel variables if they exist
 if [ -n "$MYSQLHOST" ]; then
   export DB_HOST=$MYSQLHOST
@@ -36,6 +40,8 @@ export DB_DATABASE=${DB_DATABASE:-pfda_contract_db}
 export DB_USERNAME=${DB_USERNAME:-root}
 export DB_PASSWORD=${DB_PASSWORD:-}
 
+echo "Environment: $APP_ENV"
+echo "Debug: $APP_DEBUG"
 echo "Database Host: $DB_HOST"
 echo "Database Port: $DB_PORT"
 echo "Database Name: $DB_DATABASE"
