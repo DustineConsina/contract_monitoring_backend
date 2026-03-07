@@ -239,15 +239,47 @@ class TenantController extends Controller
         // Map camelCase input fields to snake_case database field names
         $data = $request->all();
         
-        // Map personal name fields
+        // Extract user-related fields
+        $userData = [];
+        $firstName = '';
+        $lastName = '';
+        
         if (isset($data['firstName'])) {
-            $data['contact_person'] = $data['firstName'];
+            $firstName = $data['firstName'];
+            $userData['first_name'] = $firstName;
             unset($data['firstName']);
+        } else {
+            $firstName = $tenant->user->first_name ?? '';
         }
         
         if (isset($data['lastName'])) {
-            // lastName not stored in DB, just remove it
+            $lastName = $data['lastName'];
+            $userData['last_name'] = $lastName;
             unset($data['lastName']);
+        } else {
+            $lastName = $tenant->user->last_name ?? '';
+        }
+        
+        // Combine firstName and lastName into contact_person for tenant
+        $fullName = trim("{$firstName} {$lastName}");
+        if (!empty($fullName)) {
+            $data['contact_person'] = $fullName;
+        }
+        
+        if (isset($data['email'])) {
+            $userData['email'] = $data['email'];
+            unset($data['email']);
+        }
+        
+        if (isset($data['address'])) {
+            $userData['address'] = $data['address'];
+            unset($data['address']);
+        }
+        
+        if (isset($data['contactNumber'])) {
+            $userData['phone'] = $data['contactNumber'];
+            $data['contact_number'] = $data['contactNumber'];
+            unset($data['contactNumber']);
         }
         
         // Map business-related fields
@@ -270,12 +302,8 @@ class TenantController extends Controller
             $data['contact_person'] = $data['contactPerson'];
             unset($data['contactPerson']);
         }
-        
-        if (isset($data['contactNumber'])) {
-            $data['contact_number'] = $data['contactNumber'];
-            unset($data['contactNumber']);
-        }
 
+        // Validate tenant data
         $validator = Validator::make($data, [
             'business_name' => 'sometimes|string|max:255',
             'business_type' => 'sometimes|string|max:255',
@@ -291,6 +319,28 @@ class TenantController extends Controller
                 'success' => false,
                 'errors' => $validator->errors()
             ], 422);
+        }
+
+        // Update user if user data provided
+        if (!empty($userData)) {
+            // Validate user data
+            $userValidator = Validator::make($userData, [
+                'first_name' => 'sometimes|string|max:255',
+                'last_name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email|unique:users,email,' . $tenant->user_id,
+                'address' => 'sometimes|string',
+                'phone' => 'sometimes|string|max:20',
+            ]);
+
+            if ($userValidator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User validation failed',
+                    'errors' => $userValidator->errors()
+                ], 422);
+            }
+
+            $tenant->user->update($userData);
         }
 
         $oldValues = $tenant->toArray();
