@@ -86,6 +86,18 @@ php artisan cashier:create 2>&1 || echo "Cashier account creation attempted"
 echo "Seeding database with admin/staff/cashier users..."
 php artisan db:seed --class=AdminUserSeeder --force 2>&1 || echo "AdminUserSeeder completed (users might already exist)"
 
+echo "Seeding database with rental spaces..."
+php artisan db:seed --class=RentalSpaceSeeder --force 2>&1 || echo "RentalSpaceSeeder completed"
+
+echo "Seeding database with tenants..."
+php artisan db:seed --class=TenantSeeder --force 2>&1 || echo "TenantSeeder completed"
+
+echo "Seeding database with test contracts..."
+php artisan db:seed --class=ContractSeeder --force 2>&1 || echo "ContractSeeder completed"
+
+echo "Checking contract integrity..."
+php artisan contracts:ensure-integrity 2>&1 || echo "Contract integrity check completed"
+
 echo "Running additional seeds..."
 php artisan db:seed --force 2>&1 || echo "Additional seeding completed"
 
