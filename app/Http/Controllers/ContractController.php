@@ -286,35 +286,51 @@ class ContractController extends Controller
         \Log::info('ContractController@show called with ID: ' . $id);
         
         try {
+            // Load all necessary relationships eagerly
             $contract = Contract::with([
-                'tenant.user',
-                'rentalSpace',
-                'payments'
+                'tenant',           // This loads the Tenant model
+                'tenant.user',      // This loads the User through Tenant
+                'rentalSpace',      // This loads the RentalSpace
+                'payments'          // This loads all Payments
             ])->findOrFail($id);
 
             \Log::info('Contract found', ['id' => $contract->id, 'number' => $contract->contract_number]);
-            \Log::info('Contract has tenant: ' . ($contract->tenant ? 'YES' : 'NO'));
-            \Log::info('Contract rental space: ' . ($contract->rentalSpace ? 'YES' : 'NO'));
-            \Log::info('Contract rental space fields:', [
-                'space_code' => $contract->rentalSpace->space_code ?? 'N/A',
-                'space_type' => $contract->rentalSpace->space_type ?? 'N/A',
-                'size_sqm' => $contract->rentalSpace->size_sqm ?? 'N/A',
-                'name' => $contract->rentalSpace->name ?? 'N/A',
-            ]);
+            
+            // Log tenant info
+            if ($contract->tenant) {
+                \Log::info('Contract tenant:', [
+                    'tenant_id' => $contract->tenant->id,
+                    'business_name' => $contract->tenant->business_name,
+                    'contact_person' => $contract->tenant->contact_person,
+                    'user_id' => $contract->tenant->user_id,
+                    'user_name' => $contract->tenant->user ? $contract->tenant->user->name : 'NO USER',
+                ]);
+            }
+            
+            // Log rental space info
+            if ($contract->rentalSpace) {
+                \Log::info('Contract rental space:', [
+                    'id' => $contract->rentalSpace->id,
+                    'space_code' => $contract->rentalSpace->space_code,
+                    'name' => $contract->rentalSpace->name,
+                    'space_type' => $contract->rentalSpace->space_type,
+                    'size_sqm' => $contract->rentalSpace->size_sqm,
+                    'base_rental_rate' => $contract->rentalSpace->base_rental_rate,
+                ]);
+            }
+            
             \Log::info('Payments count: ' . (isset($contract->payments) ? count($contract->payments) : 'N/A'));
             
+            // Log view action
             AuditLog::log('view', 'Contract', $contract->id, "Viewed contract: {$contract->contract_number}");
 
-            $responseData = [
+            // Return the complete contract object with all relationships loaded
+            return response()->json([
                 'success' => true,
                 'data' => $contract
-            ];
-            
-            \Log::info('Returning response', ['response_keys' => array_keys($responseData)]);
-            
-            return response()->json($responseData);
+            ]);
         } catch (\Exception $e) {
-            \Log::error('Contract error: ' . $e->getMessage());
+            \Log::error('Contract error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             throw $e;
         }
     }

@@ -80,6 +80,9 @@ php artisan tinker --execute="echo 'DB Connection OK'" 2>/dev/null || echo "Data
 echo "Running database migrations..."
 php artisan migrate --force 2>&1 || echo "Migration completed (DB might already exist)"
 
+echo "Creating cashier account..."
+php artisan cashier:create 2>&1 || echo "Cashier account creation attempted"
+
 echo "Seeding database with admin/staff/cashier users..."
 php artisan db:seed --class=AdminUserSeeder --force 2>&1 || echo "AdminUserSeeder completed (users might already exist)"
 
