@@ -77,32 +77,41 @@ rm -rf storage/framework/cache/* 2>/dev/null || true
 echo "Verifying database connection..."
 php artisan tinker --execute="echo 'DB Connection OK'" 2>/dev/null || echo "Database connection warning - migrations will handle setup"
 
-echo "Running database migrations..."
-php artisan migrate --force 2>&1 || echo "Migration completed (DB might already exist)"
+echo "=== RUNNING MIGRATIONS ==="
+php artisan migrate:fresh --force 2>&1 || {
+  echo "Migration failed, trying with existing database..."
+  php artisan migrate --force 2>&1 || echo "Migration completed (DB might already exist)"
+}
 
-echo "Creating cashier account..."
-php artisan cashier:create 2>&1 || echo "Cashier account creation attempted"
+echo ""
+echo "=== CREATING USERS ==="
+php artisan db:seed --class=AdminUserSeeder --force 2>&1
 
-echo "Seeding database with admin/staff/cashier users..."
-php artisan db:seed --class=AdminUserSeeder --force 2>&1 || echo "AdminUserSeeder completed (users might already exist)"
+echo ""
+echo "=== CREATING RENTAL SPACES ==="
+php artisan db:seed --class=RentalSpaceSeeder --force 2>&1
 
-echo "Seeding database with rental spaces..."
-php artisan db:seed --class=RentalSpaceSeeder --force 2>&1 || echo "RentalSpaceSeeder completed"
+echo ""
+echo "=== CREATING TENANTS ==="
+php artisan db:seed --class=TenantSeeder --force 2>&1
 
-echo "Seeding database with tenants..."
-php artisan db:seed --class=TenantSeeder --force 2>&1 || echo "TenantSeeder completed"
+echo ""
+echo "=== CREATING CONTRACTS ==="
+php artisan db:seed --class=ContractSeeder --force 2>&1
 
-echo "Seeding database with test contracts..."
-php artisan db:seed --class=ContractSeeder --force 2>&1 || echo "ContractSeeder completed"
+echo ""
+echo "=== CREATING CASHIER ACCOUNT ==="
+php artisan cashier:create 2>&1
 
-echo "Fixing contract relationships..."
-php artisan contracts:fix-relationships 2>&1 || echo "Contract relationship fix completed"
+echo ""
+echo "=== FIXING RELATIONSHIPS ==="
+php artisan contracts:fix-relationships 2>&1
 
-echo "Checking contract integrity..."
-php artisan contracts:ensure-integrity 2>&1 || echo "Contract integrity check completed"
+echo ""
+echo "=== FINAL INTEGRITY CHECK ==="
+php artisan contracts:ensure-integrity 2>&1
 
-echo "Running additional seeds..."
-php artisan db:seed --force 2>&1 || echo "Additional seeding completed"
-
+echo ""
+echo "=== ✅ ALL SETUP COMPLETE - STARTING SERVER ==="
 echo "App is ready. Starting PHP server on port ${PORT:-8000}..."
 exec php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
