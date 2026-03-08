@@ -80,8 +80,11 @@ php artisan tinker --execute="echo 'DB Connection OK'" 2>/dev/null || echo "Data
 echo "Running database migrations..."
 php artisan migrate --force 2>&1 || echo "Migration completed (DB might already exist)"
 
-echo "Seeding database if needed..."
-php artisan db:seed --force 2>&1 || echo "Seeding completed (data might already exist)"
+echo "Seeding database with admin/staff/cashier users..."
+php artisan db:seed --class=AdminUserSeeder --force 2>&1 || echo "AdminUserSeeder completed (users might already exist)"
+
+echo "Running additional seeds..."
+php artisan db:seed --force 2>&1 || echo "Additional seeding completed"
 
 echo "App is ready. Starting PHP server on port ${PORT:-8000}..."
 exec php artisan serve --host=0.0.0.0 --port=${PORT:-8000}

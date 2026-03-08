@@ -125,6 +125,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/reports/tenants', [ReportController::class, 'tenantsReport']);
         Route::get('/reports/expiring-contracts', [ReportController::class, 'expiringContractsReport']);
         Route::get('/reports/audit-log', [ReportController::class, 'auditLogReport']);
+        Route::get('/audit-logs', [ReportController::class, 'auditLogReport']); // Alias for /reports/audit-log
     });
 
     // Cashier routes
