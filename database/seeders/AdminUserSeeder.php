@@ -35,8 +35,20 @@ class AdminUserSeeder extends Seeder
             'status' => 'active',
         ]);
 
-        $this->command->info('Created admin and staff users');
+        // Create Cashier User
+        User::create([
+            'name' => 'Cashier User',
+            'email' => 'cashier@pfda.gov.ph',
+            'password' => Hash::make('password123'),
+            'role' => 'cashier',
+            'phone' => '09123456791',
+            'address' => 'PFDA Office, Bulan, Sorsogon',
+            'status' => 'active',
+        ]);
+
+        $this->command->info('Created admin, staff, and cashier users');
         $this->command->info('Admin Email: admin@pfda.gov.ph, Password: password123');
         $this->command->info('Staff Email: staff@pfda.gov.ph, Password: password123');
+        $this->command->info('Cashier Email: cashier@pfda.gov.ph, Password: password123');
     }
 }
