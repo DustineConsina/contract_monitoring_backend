@@ -72,44 +72,73 @@ class AuthController extends Controller
      */
     public function login(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => 'required|email',
+                'password' => 'required',
+            ]);
 
-        if ($validator->fails()) {
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            if (!Auth::attempt($request->only('email', 'password'))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid credentials'
+                ], 401);
+            }
+
+            $user = User::where('email', $request->email)->firstOrFail();
+
+            if ($user->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account is inactive. Please contact the administrator.'
+                ], 403);
+            }
+
+            // Create token BEFORE audit logging
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            // Log audit with explicit user ID (not relying on auth())
+            try {
+                AuditLog::create([
+                    'user_id' => $user->id,
+                    'action' => 'login',
+                    'model_type' => 'User',
+                    'model_id' => $user->id,
+                    'description' => "User {$user->name} logged in",
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                ]);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Audit log failed during login', ['error' => $e->getMessage()]);
+            }
+
+            // Return simplified user object to avoid serialization issues
+            return response()->json([
+                'success' => true,
+                'message' => 'Login successful',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'status' => $user->status,
+                ],
+                'token' => $token,
+            ]);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Login error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
+                'message' => 'Login failed: ' . $e->getMessage()
+            ], 500);
         }
-
-        if (!Auth::attempt($request->only('email', 'password'))) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials'
-            ], 401);
-        }
-
-        $user = User::where('email', $request->email)->firstOrFail();
-
-        if ($user->status !== 'active') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Your account is inactive. Please contact the administrator.'
-            ], 403);
-        }
-
-        AuditLog::log('login', 'User', $user->id, "User {$user->name} logged in");
-
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Login successful',
-            'user' => $user,
-            'token' => $token,
-        ]);
     }
 
     /**
