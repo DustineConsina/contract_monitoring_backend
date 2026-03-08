@@ -294,6 +294,13 @@ class ContractController extends Controller
 
             \Log::info('Contract found', ['id' => $contract->id, 'number' => $contract->contract_number]);
             \Log::info('Contract has tenant: ' . ($contract->tenant ? 'YES' : 'NO'));
+            \Log::info('Contract rental space: ' . ($contract->rentalSpace ? 'YES' : 'NO'));
+            \Log::info('Contract rental space fields:', [
+                'space_code' => $contract->rentalSpace->space_code ?? 'N/A',
+                'space_type' => $contract->rentalSpace->space_type ?? 'N/A',
+                'size_sqm' => $contract->rentalSpace->size_sqm ?? 'N/A',
+                'name' => $contract->rentalSpace->name ?? 'N/A',
+            ]);
             \Log::info('Payments count: ' . (isset($contract->payments) ? count($contract->payments) : 'N/A'));
             
             AuditLog::log('view', 'Contract', $contract->id, "Viewed contract: {$contract->contract_number}");
