@@ -80,7 +80,10 @@ echo "=== RUNNING MIGRATIONS ==="
 php artisan migrate --force 2>&1 || echo "⚠️  Migration had issues, continuing..."
 
 echo ""
-echo "=== CLEARING CACHES ==="
+echo "=== ENSURING MIGRATIONS COMPLETE ==="
+php artisan migrate:ensure 2>&1 || echo "⚠️  Migration ensure had issues"
+
+echo ""
 php artisan config:clear 2>&1 || true
 php artisan cache:clear 2>&1 || true
 
