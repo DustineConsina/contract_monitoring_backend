@@ -73,19 +73,28 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
+            \Illuminate\Support\Facades\Log::info('Login attempt', ['email' => $request->email]);
+            
             $validator = Validator::make($request->all(), [
                 'email' => 'required|email',
                 'password' => 'required',
             ]);
 
             if ($validator->fails()) {
+                \Illuminate\Support\Facades\Log::warning('Login validation failed', ['errors' => $validator->errors()]);
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors()
                 ], 422);
             }
 
-            if (!Auth::attempt($request->only('email', 'password'))) {
+            \Illuminate\Support\Facades\Log::info('Attempting authentication', ['email' => $request->email]);
+            
+            $authenticated = Auth::attempt($request->only('email', 'password'));
+            \Illuminate\Support\Facades\Log::info('Authentication result', ['authenticated' => $authenticated]);
+            
+            if (!$authenticated) {
+                \Illuminate\Support\Facades\Log::warning('Invalid credentials', ['email' => $request->email]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid credentials'
@@ -93,16 +102,20 @@ class AuthController extends Controller
             }
 
             $user = User::where('email', $request->email)->firstOrFail();
+            \Illuminate\Support\Facades\Log::info('User found', ['user_id' => $user->id, 'status' => $user->status]);
 
             if ($user->status !== 'active') {
+                \Illuminate\Support\Facades\Log::warning('Inactive account', ['user_id' => $user->id, 'status' => $user->status]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Your account is inactive. Please contact the administrator.'
                 ], 403);
             }
 
+            \Illuminate\Support\Facades\Log::info('Creating token for user', ['user_id' => $user->id]);
             // Create token BEFORE audit logging
             $token = $user->createToken('auth_token')->plainTextToken;
+            \Illuminate\Support\Facades\Log::info('Token created successfully', ['user_id' => $user->id]);
 
             // Log audit with explicit user ID (not relying on auth())
             try {
@@ -115,12 +128,13 @@ class AuthController extends Controller
                     'ip_address' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                 ]);
+                \Illuminate\Support\Facades\Log::info('Audit log created', ['user_id' => $user->id]);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning('Audit log failed during login', ['error' => $e->getMessage()]);
+                \Illuminate\Support\Facades\Log::warning('Audit log failed during login', ['error' => $e->getMessage(), 'user_id' => $user->id]);
             }
 
             // Return simplified user object to avoid serialization issues
-            return response()->json([
+            $responseData = [
                 'success' => true,
                 'message' => 'Login successful',
                 'user' => [
@@ -131,7 +145,10 @@ class AuthController extends Controller
                     'status' => $user->status,
                 ],
                 'token' => $token,
-            ]);
+            ];
+            
+            \Illuminate\Support\Facades\Log::info('Returning login response', ['user_id' => $user->id]);
+            return response()->json($responseData);
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Login error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json([
