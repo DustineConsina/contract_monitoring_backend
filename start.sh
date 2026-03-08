@@ -95,6 +95,9 @@ php artisan db:seed --class=TenantSeeder --force 2>&1 || echo "TenantSeeder comp
 echo "Seeding database with test contracts..."
 php artisan db:seed --class=ContractSeeder --force 2>&1 || echo "ContractSeeder completed"
 
+echo "Fixing contract relationships..."
+php artisan contracts:fix-relationships 2>&1 || echo "Contract relationship fix completed"
+
 echo "Checking contract integrity..."
 php artisan contracts:ensure-integrity 2>&1 || echo "Contract integrity check completed"
 
