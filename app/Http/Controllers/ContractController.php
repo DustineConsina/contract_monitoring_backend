@@ -286,7 +286,7 @@ class ContractController extends Controller
         \Log::info('ContractController@show called with ID: ' . $id);
         
         try {
-            // Load all necessary relationships eagerly
+            // Load contract with ALL relationships
             $contract = Contract::with([
                 'tenant',           // This loads the Tenant model
                 'tenant.user',      // This loads the User through Tenant
@@ -296,38 +296,53 @@ class ContractController extends Controller
 
             \Log::info('Contract found', ['id' => $contract->id, 'number' => $contract->contract_number]);
             
-            // Log tenant info
-            if ($contract->tenant) {
-                \Log::info('Contract tenant:', [
+            // Verify relationships are loaded
+            if (!$contract->tenant) {
+                \Log::warning('⚠️ Contract has no tenant relationship, tenant_id: ' . $contract->tenant_id);
+            } else {
+                \Log::info('✓ Tenant loaded:', [
                     'tenant_id' => $contract->tenant->id,
                     'business_name' => $contract->tenant->business_name,
-                    'contact_person' => $contract->tenant->contact_person,
                     'user_id' => $contract->tenant->user_id,
-                    'user_name' => $contract->tenant->user ? $contract->tenant->user->name : 'NO USER',
+                    'user' => $contract->tenant->user ? $contract->tenant->user->name : null,
                 ]);
             }
             
-            // Log rental space info
-            if ($contract->rentalSpace) {
-                \Log::info('Contract rental space:', [
+            if (!$contract->rentalSpace) {
+                \Log::warning('⚠️ Contract has no rental space, rental_space_id: ' . $contract->rental_space_id);
+            } else {
+                \Log::info('✓ Rental space loaded:', [
                     'id' => $contract->rentalSpace->id,
-                    'space_code' => $contract->rentalSpace->space_code,
                     'name' => $contract->rentalSpace->name,
+                    'space_code' => $contract->rentalSpace->space_code,
                     'space_type' => $contract->rentalSpace->space_type,
                     'size_sqm' => $contract->rentalSpace->size_sqm,
-                    'base_rental_rate' => $contract->rentalSpace->base_rental_rate,
                 ]);
             }
             
-            \Log::info('Payments count: ' . (isset($contract->payments) ? count($contract->payments) : 'N/A'));
+            \Log::info('Payments loaded: ' . (isset($contract->payments) ? count($contract->payments) : 0) . ' payments');
+            
+            // Convert to array for better control of response structure
+            $contractArray = $contract->toArray();
+            
+            // Ensure relationships are present in the array
+            $contractArray['tenant'] = $contract->tenant ? $contract->tenant->toArray() : null;
+            $contractArray['rentalSpace'] = $contract->rentalSpace ? $contract->rentalSpace->toArray() : null;
+            $contractArray['payments'] = $contract->payments ? $contract->payments->toArray() : [];
+            
+            \Log::info('Response structure prepared:', [
+                'has_tenant' => !is_null($contractArray['tenant']),
+                'has_rental_space' => !is_null($contractArray['rentalSpace']),
+                'payments_count' => count($contractArray['payments']),
+            ]);
             
             // Log view action
             AuditLog::log('view', 'Contract', $contract->id, "Viewed contract: {$contract->contract_number}");
 
-            // Return the complete contract object with all relationships loaded
+            // Return with explicit data structure
             return response()->json([
                 'success' => true,
-                'data' => $contract
+                'data' => $contractArray
             ]);
         } catch (\Exception $e) {
             \Log::error('Contract error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);

@@ -175,4 +175,32 @@ class DashboardController extends Controller
             'notifications' => $notifications,
         ]);
     }
+
+    /**
+     * Debug: Get all users and contracts (admin only)
+     */
+    public function debug()
+    {
+        $user = auth()->user();
+        
+        // Only allow admin
+        if ($user->role !== 'admin') {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $users = \App\Models\User::all(['id', 'name', 'email', 'role']);
+        $allContracts = Contract::with(['tenant', 'tenant.user', 'rentalSpace'])->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'users' => $users->toArray(),
+                'users_count' =>  $users->count(),
+                'contracts_count' => $allContracts->count(),
+                'contracts_with_tenant' => $allContracts->filter(fn($c) => $c->tenant !== null)->count(),
+                'contracts_with_space' => $allContracts->filter(fn($c) => $c->rentalSpace !== null)->count(),
+                'sample_contracts' => $allContracts->take(3)->toArray(),
+            ]
+        ]);
+    }
 }

@@ -59,6 +59,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
+    Route::get('/debug', [DashboardController::class, 'debug']);
 
     // Tenants
     Route::apiResource('tenants', TenantController::class);
