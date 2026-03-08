@@ -77,11 +77,15 @@ echo "Verifying database connection..."
 php artisan tinker --execute="echo 'DB Connection OK'" 2>/dev/null || echo "Database connection warning - migrations will handle setup"
 
 echo "=== RUNNING MIGRATIONS ==="
-php artisan migrate --force 2>&1 || echo "⚠️  Migration had issues, continuing..."
+php artisan migrate --force 2>&1
 
 echo ""
-echo "=== ENSURING MIGRATIONS COMPLETE ==="
-php artisan migrate:ensure 2>&1 || echo "⚠️  Migration ensure had issues"
+echo "=== CHECKING MIGRATION STATUS ==="
+php artisan migrate:status 2>&1 | head -20
+
+echo ""
+echo "=== ENSURING CRITICAL TABLES ==="
+php artisan migrate:ensure 2>&1
 
 echo ""
 php artisan config:clear 2>&1 || true

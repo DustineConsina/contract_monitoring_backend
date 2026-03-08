@@ -3,70 +3,70 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class EnsureMigrationsComplete extends Command
 {
     protected $signature = 'migrate:ensure';
-    protected $description = 'Ensure all critical migrations are run';
+    protected $description = 'Ensure all critical tables exist';
 
     public function handle()
     {
-        $this->line('=== Ensuring Migrations Complete ===');
+        $this->line('=== Ensuring Critical Tables Exist ===');
 
         try {
-            // Check if migrations table exists
-            if (!Schema::hasTable('migrations')) {
-                $this->warn('Migrations table missing, running migrations...');
-                Artisan::call('migrate', ['--force' => true]);
-                $this->info('✓ Migrations completed');
+            // Explicitly create personal_access_tokens table if it doesn't exist
+            if (!Schema::hasTable('personal_access_tokens')) {
+                $this->warn('Creating personal_access_tokens table...');
+                DB::statement('
+                    CREATE TABLE IF NOT EXISTS personal_access_tokens (
+                        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        tokenable_type VARCHAR(255) NOT NULL,
+                        tokenable_id BIGINT UNSIGNED NOT NULL,
+                        name VARCHAR(255) NOT NULL,
+                        token VARCHAR(64) NOT NULL UNIQUE,
+                        abilities LONGTEXT,
+                        last_used_at TIMESTAMP NULL,
+                        expires_at TIMESTAMP NULL,
+                        created_at TIMESTAMP NULL,
+                        updated_at TIMESTAMP NULL,
+                        INDEX tokenable (tokenable_type, tokenable_id),
+                        INDEX expires_at (expires_at)
+                    ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+                ');
+                $this->info('✓ personal_access_tokens table created');
             } else {
-                $this->info('✓ Migrations table exists');
+                $this->info('✓ personal_access_tokens table exists');
             }
 
-            // Ensure critical tables exist
+            // Check other critical tables
             $criticalTables = [
                 'users',
                 'password_reset_tokens',
-                'personal_access_tokens',
                 'tenants',
                 'rental_spaces',
                 'contracts',
                 'payments',
+                'chat_messages',
                 'audit_logs',
             ];
 
             foreach ($criticalTables as $table) {
                 if (Schema::hasTable($table)) {
-                    $this->info("✓ Table exists: {$table}");
+                    $this->info("✓ {$table}");
                 } else {
-                    $this->warn("✗ Missing table: {$table}");
+                    $this->warn("✗ Missing: {$table}");
                 }
             }
 
-            // If personal_access_tokens is missing, try refresh or create manually
-            if (!Schema::hasTable('personal_access_tokens')) {
-                $this->warn('personal_access_tokens table missing, creating...');
-                Schema::create('personal_access_tokens', function ($table) {
-                    $table->id();
-                    $table->morphs('tokenable');
-                    $table->text('name');
-                    $table->string('token', 64)->unique();
-                    $table->text('abilities')->nullable();
-                    $table->timestamp('last_used_at')->nullable();
-                    $table->timestamp('expires_at')->nullable()->index();
-                    $table->timestamps();
-                });
-                $this->info('✓ personal_access_tokens table created');
-            }
-
-            $this->info('✓ Migration check complete');
+            $this->info('✓ Table verification complete');
             return 0;
         } catch (\Exception $e) {
             $this->error('Error: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error('EnsureMigrationsComplete error', ['error' => $e->getMessage()]);
             return 1;
         }
     }
 }
+
