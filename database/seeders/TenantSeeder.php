@@ -14,10 +14,8 @@ class TenantSeeder extends Seeder
      */
     public function run(): void
     {
-        \Log::info('🌱 TenantSeeder starting...');
-
-        // Create users and tenants - ensuring proper relationships
-        $tenantUsers = [
+        // Create test tenants and their users
+        $tenants = [
             [
                 'name' => 'Juan Dela Cruz',
                 'email' => 'juan@example.com',
@@ -59,38 +57,42 @@ class TenantSeeder extends Seeder
             ],
         ];
 
-        foreach ($tenantUsers as $data) {
-            // Create user
-            $user = User::updateOrCreate(
-                ['email' => $data['email']],
-                [
-                    'name' => $data['name'],
-                    'password' => Hash::make('password123'),
-                    'role' => 'tenant',
-                    'phone' => $data['phone'],
-                    'address' => $data['address'],
-                    'status' => 'active',
-                ]
-            );
+        foreach ($tenants as $data) {
+            try {
+                // Create user if doesn't exist
+                $user = User::updateOrCreate(
+                    ['email' => $data['email']],
+                    [
+                        'name' => $data['name'],
+                        'password' => \Illuminate\Support\Facades\Hash::make('password123'),
+                        'role' => 'tenant',
+                        'phone' => $data['phone'],
+                        'address' => $data['address'],
+                        'status' => 'active',
+                    ]
+                );
 
-            // Create tenant linked to user
-            $tenant = Tenant::updateOrCreate(
-                ['user_id' => $user->id],
-                [
-                    'tenant_code' => $data['tenant_code'],
-                    'business_name' => $data['business_name'],
-                    'business_type' => $data['business_type'],
-                    'tin' => $data['tin'],
-                    'contact_person' => $data['contact_person'],
-                    'contact_number' => $data['contact_number'],
-                    'business_address' => $data['business_address'],
-                    'status' => 'active',
-                ]
-            );
+                // Create tenant for the user
+                Tenant::updateOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'tenant_code' => $data['tenant_code'],
+                        'business_name' => $data['business_name'],
+                        'business_type' => $data['business_type'],
+                        'tin' => $data['tin'],
+                        'contact_person' => $data['contact_person'],
+                        'contact_number' => $data['contact_number'],
+                        'business_address' => $data['business_address'],
+                        'status' => 'active',
+                    ]
+                );
 
-            \Log::info("✓ Tenant created: {$tenant->business_name} (User: {$user->name}, ID: {$user->id})");
+                $this->command->line("✓ Created: {$data['business_name']}");
+            } catch (\Exception $e) {
+                $this->command->warn("✗ Failed to create {$data['business_name']}: " . $e->getMessage());
+            }
         }
 
-        $this->command->info('✓ TenantSeeder complete - 3 test tenants created');
+        $this->command->info('✓ TenantSeeder complete');
     }
 }

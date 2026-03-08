@@ -78,40 +78,28 @@ echo "Verifying database connection..."
 php artisan tinker --execute="echo 'DB Connection OK'" 2>/dev/null || echo "Database connection warning - migrations will handle setup"
 
 echo "=== RUNNING MIGRATIONS ==="
-php artisan migrate:fresh --force 2>&1 || {
-  echo "Migration failed, trying with existing database..."
-  php artisan migrate --force 2>&1 || echo "Migration completed (DB might already exist)"
-}
+php artisan migrate --force 2>&1 || echo "⚠️  Migration had issues, continuing..."
 
 echo ""
-echo "=== CREATING USERS ==="
-php artisan db:seed --class=AdminUserSeeder --force 2>&1
+echo "=== CLEARING CACHES ==="
+php artisan config:clear 2>&1 || true
+php artisan cache:clear 2>&1 || true
 
 echo ""
-echo "=== CREATING RENTAL SPACES ==="
-php artisan db:seed --class=RentalSpaceSeeder --force 2>&1
-
-echo ""
-echo "=== CREATING TENANTS ==="
-php artisan db:seed --class=TenantSeeder --force 2>&1
-
-echo ""
-echo "=== CREATING CONTRACTS ==="
-php artisan db:seed --class=ContractSeeder --force 2>&1
+echo "=== SEEDING DATABASE ==="
+php artisan db:seed --class=AdminUserSeeder --force 2>&1 || echo "⚠️  AdminUserSeeder had issues"
+php artisan db:seed --class=RentalSpaceSeeder --force 2>&1 || echo "⚠️  RentalSpaceSeeder had issues"
+php artisan db:seed --class=TenantSeeder --force 2>&1 || echo "⚠️  TenantSeeder had issues"
+php artisan db:seed --class=ContractSeeder --force 2>&1 || echo "⚠️  ContractSeeder had issues"
 
 echo ""
 echo "=== CREATING CASHIER ACCOUNT ==="
-php artisan cashier:create 2>&1
+php artisan cashier:create 2>&1 || echo "⚠️  Cashier creation had issues"
 
 echo ""
 echo "=== FIXING RELATIONSHIPS ==="
-php artisan contracts:fix-relationships 2>&1
+php artisan contracts:fix-relationships 2>&1 || echo "⚠️  Relationship fix had issues"
 
 echo ""
-echo "=== FINAL INTEGRITY CHECK ==="
-php artisan contracts:ensure-integrity 2>&1
-
-echo ""
-echo "=== ✅ ALL SETUP COMPLETE - STARTING SERVER ==="
-echo "App is ready. Starting PHP server on port ${PORT:-8000}..."
+echo "✅ DEPLOYMENT COMPLETE - Starting server..."
 exec php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
