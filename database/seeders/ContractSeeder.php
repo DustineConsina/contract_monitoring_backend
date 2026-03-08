@@ -31,6 +31,7 @@ class ContractSeeder extends Seeder
                     continue;
                 }
 
+                $startDate = Carbon::now()->subMonths(3);
                 Contract::updateOrCreate(
                     [
                         'tenant_id' => $tenant->id,
@@ -38,19 +39,20 @@ class ContractSeeder extends Seeder
                     ],
                     [
                         'contract_number' => 'CNT-' . str_pad($index + 1, 6, '0', STR_PAD_LEFT),
-                        'start_date' => \Carbon\Carbon::now()->subMonths(3),
+                        'start_date' => $startDate,
+                        'end_date' => $startDate->addMonths(12),
                         'duration_months' => 12,
                         'monthly_rental' => (int)$space->base_rental_rate,
-                        'deposit_amount' => (int)$space->base_rental_rate * 2,
+                        'deposit_amount' => ((int)$space->base_rental_rate) * 2,
                         'interest_rate' => 5.00,
                         'terms_conditions' => 'Standard lease terms.',
                         'status' => 'active',
                     ]
                 );
 
-                $this->command->line("✓ Contract: {$tenant->business_name} ↔ {$space->name}");
+                $this->command->line("✓ Contract created for {$tenant->tenant_code}");
             } catch (\Exception $e) {
-                $this->command->warn("✗ Failed to create contract: " . $e->getMessage());
+                $this->command->warn("✗ Contract seed failed: " . $e->getMessage());
             }
         }
 
