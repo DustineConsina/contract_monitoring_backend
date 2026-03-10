@@ -52,6 +52,13 @@ class AdminUserSeeder extends Seeder
             } catch (QueryException $e) {
                 if (strpos($e->getMessage(), 'Duplicate entry') !== false) {
                     $this->command->line("⚠️  {$userData['email']} already exists");
+                } elseif (strpos($e->getMessage(), 'Data truncated') !== false || strpos($e->getMessage(), 'truncated for column') !== false) {
+                    $this->command->error("✗ Failed to create {$userData['email']}: The '{$userData['role']}' role is not supported by the database enum. Run migrations first: php artisan migrate");
+                    \Illuminate\Support\Facades\Log::error('AdminUserSeeder: Role enum error', [
+                        'email' => $userData['email'],
+                        'role' => $userData['role'],
+                        'error' => $e->getMessage()
+                    ]);
                 } else {
                     $this->command->error("✗ Failed to create {$userData['email']}: " . $e->getMessage());
                     \Illuminate\Support\Facades\Log::error('AdminUserSeeder error', [

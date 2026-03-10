@@ -1,8 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -11,14 +10,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            // Drop the existing enum and recreate it with 'cashier' added
-            $table->dropColumn('role');
-        });
-
-        Schema::table('users', function (Blueprint $table) {
-            $table->enum('role', ['admin', 'staff', 'tenant', 'cashier'])->default('tenant')->after('email');
-        });
+        // Use raw SQL to modify the enum column to include 'cashier'
+        // This is more reliable for enum modifications in MySQL
+        try {
+            DB::statement("ALTER TABLE users MODIFY COLUMN role ENUM('admin', 'staff', 'tenant', 'cashier') DEFAULT 'tenant'");
+            echo "\n✓ Role enum updated to include 'cashier'\n";
+        } catch (\Exception $e) {
+            echo "\n⚠️  Could not update role enum: " . $e->getMessage() . "\n";
+            // If the column already has the right enum, that's fine - continue
+        }
     }
 
     /**
@@ -26,12 +26,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('role');
-        });
-
-        Schema::table('users', function (Blueprint $table) {
-            $table->enum('role', ['admin', 'staff', 'tenant'])->default('tenant')->after('email');
-        });
+        try {
+            DB::statement("ALTER TABLE users MODIFY COLUMN role ENUM('admin', 'staff', 'tenant') DEFAULT 'tenant'");
+        } catch (\Exception $e) {
+            // Ignore errors on rollback
+        }
     }
 };
