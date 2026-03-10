@@ -88,6 +88,9 @@ echo "=== ENSURING CRITICAL TABLES ==="
 php artisan migrate:ensure 2>&1
 
 echo ""
+echo "=== FIXING DATABASE SCHEMA ==="
+php artisan users:fix-role-enum 2>&1 || echo "⚠️  Role enum fix had issues"
+
 php artisan config:clear 2>&1 || true
 php artisan cache:clear 2>&1 || true
 
@@ -99,12 +102,8 @@ php artisan db:seed --class=TenantSeeder --force 2>&1 || echo "⚠️  TenantSee
 php artisan db:seed --class=ContractSeeder --force 2>&1 || echo "⚠️  ContractSeeder had issues"
 
 echo ""
-echo "=== CREATING CASHIER ACCOUNT ==="
-php artisan cashier:create 2>&1 || echo "⚠️  Cashier creation had issues"
-
-echo ""
-echo "=== FIXING RELATIONSHIPS ==="
-php artisan contracts:fix-relationships 2>&1 || echo "⚠️  Relationship fix had issues"
+echo "=== FIXING ORPHANED CONTRACTS ==="
+php artisan contracts:link-orphaned 2>&1 || echo "⚠️  Contract linkage had issues"
 
 echo ""
 echo "✅ DEPLOYMENT COMPLETE - Starting server..."
