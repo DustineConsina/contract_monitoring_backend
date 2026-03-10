@@ -325,10 +325,13 @@ class ContractController extends Controller
             // Convert to array for better control of response structure
             $contractArray = $contract->toArray();
             
-            // Ensure relationships are present in the array
+            // Ensure relationships are present in the array, with null checks
             $contractArray['tenant'] = $contract->tenant ? $contract->tenant->toArray() : null;
             $contractArray['rentalSpace'] = $contract->rentalSpace ? $contract->rentalSpace->toArray() : null;
             $contractArray['payments'] = $contract->payments ? $contract->payments->toArray() : [];
+            
+            // Also include snake_case versions for camelCase/snake_case fallbacks
+            $contractArray['rental_space'] = $contractArray['rentalSpace'];
             
             \Log::info('Response structure prepared:', [
                 'has_tenant' => !is_null($contractArray['tenant']),
@@ -786,29 +789,41 @@ class ContractController extends Controller
     public function viewQRContract($id)
     {
         try {
+            \Log::info('viewQRContract called for ID: ' . $id);
+            
             $contract = Contract::with([
                 'tenant.user',
                 'rentalSpace'
             ])->findOrFail($id);
 
+            \Log::info('Contract found', [
+                'id' => $contract->id,
+                'has_tenant' => !is_null($contract->tenant),
+                'has_space' => !is_null($contract->rentalSpace)
+            ]);
+
             // Return contract details in camelCase for frontend
+            // Safely handle null tenant and rental space relationships
             return response()->json([
                 'success' => true,
                 'data' => [
                     'id' => $contract->id,
                     'contractNumber' => $contract->contract_number,
-                    'tenant' => [
+                    'tenantId' => $contract->tenant_id,
+                    'tenant' => $contract->tenant ? [
                         'id' => $contract->tenant->id,
                         'contactPerson' => $contract->tenant->contact_person,
                         'businessName' => $contract->tenant->business_name,
                         'contactNumber' => $contract->tenant->contact_number,
-                    ],
-                    'rentalSpace' => [
+                    ] : null,
+                    'rentalSpaceId' => $contract->rental_space_id,
+                    'rentalSpace' => $contract->rentalSpace ? [
                         'id' => $contract->rentalSpace->id,
                         'spaceCode' => $contract->rentalSpace->space_code,
+                        'name' => $contract->rentalSpace->name,
                         'spaceType' => $contract->rentalSpace->space_type,
                         'sizeSqm' => $contract->rentalSpace->size_sqm,
-                    ],
+                    ] : null,
                     'startDate' => $contract->start_date?->format('Y-m-d'),
                     'endDate' => $contract->end_date?->format('Y-m-d'),
                     'monthlyRental' => $contract->monthly_rental,
@@ -818,6 +833,7 @@ class ContractController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
+            \Log::error('viewQRContract error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Contract not found'
