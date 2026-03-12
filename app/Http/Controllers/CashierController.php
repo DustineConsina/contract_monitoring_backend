@@ -58,7 +58,7 @@ class CashierController extends Controller
         try {
             $status = $request->get('status', 'all'); // all, pending, overdue, paid
             
-            $query = Payment::with(['contract.tenant', 'contract.rentalSpace']);
+            $query = Payment::with(['contract.tenant.user', 'contract.rentalSpace']);
             
             if ($status === 'paid') {
                 $query->where('status', 'paid');
@@ -84,8 +84,11 @@ class CashierController extends Controller
             
             // Map payments with guaranteed calculations
             $mappedPayments = $payments->map(function($p) {
-                // Ensure amount_due is set (fallback to contract's monthly rental)
-                $amountDue = floatval($p->amount_due ?? $p->contract->monthly_rental ?? 0);
+                // Ensure amount_due is set (fallback to contract's rental space monthly rental)
+                $amountDue = floatval($p->amount_due ?? 0);
+                if ($amountDue <= 0 && $p->contract && $p->contract->rentalSpace) {
+                    $amountDue = floatval($p->contract->rentalSpace->monthly_rental ?? 0);
+                }
                 
                 // Calculate interest if not set
                 $interestAmount = floatval($p->interest_amount ?? 0);
@@ -103,11 +106,20 @@ class CashierController extends Controller
                 $amountPaid = floatval($p->amount_paid ?? 0);
                 $balance = $totalAmount - $amountPaid;
                 
+                // Get tenant name - try multiple locations
+                $tenantName = 'N/A';
+                if ($p->contract && $p->contract->tenant) {
+                    $tenantName = $p->contract->tenant->contact_person ?? 
+                                 $p->contract->tenant->user->name ?? 
+                                 $p->contract->tenant->business_name ?? 
+                                 'N/A';
+                }
+                
                 return [
                     'id' => $p->id,
                     'payment_number' => $p->payment_number,
-                    'contract_number' => $p->contract->contract_number,
-                    'tenant' => $p->contract->tenant->contact_person,
+                    'contract_number' => $p->contract->contract_number ?? 'N/A',
+                    'tenant' => $tenantName,
                     'amount_due' => $amountDue,
                     'interest' => $interestAmount,
                     'total' => $totalAmount,
