@@ -67,6 +67,16 @@ class RentalSpaceController extends Controller
         $spaces->getCollection()->transform(function ($space) {
             $space->is_occupied = $space->active_contracts_count > 0;
             $space->occupancy_status = $space->active_contracts_count > 0 ? 'occupied' : 'available';
+            
+            // DEBUG: Log first few spaces
+            static $logCount = 0;
+            if ($logCount < 3) {
+                \Log::info('🔍 Space ' . $space->id . ' - Active Contracts Count: ' . $space->active_contracts_count . 
+                          ', Occupancy Status: ' . $space->occupancy_status . 
+                          ', DB Status: ' . $space->status);
+                $logCount++;
+            }
+            
             return $space;
         });
 
