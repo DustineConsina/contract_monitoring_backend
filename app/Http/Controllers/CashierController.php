@@ -82,6 +82,42 @@ class CashierController extends Controller
                 return ['pending' => $payment];
             });
             
+            // Map payments with guaranteed calculations
+            $mappedPayments = $payments->map(function($p) {
+                // Ensure amount_due is set (fallback to contract's monthly rental)
+                $amountDue = floatval($p->amount_due ?? $p->contract->monthly_rental ?? 0);
+                
+                // Calculate interest if not set
+                $interestAmount = floatval($p->interest_amount ?? 0);
+                if ($interestAmount == 0 && $amountDue > 0) {
+                    $interestAmount = $amountDue * 0.03;
+                }
+                
+                // Calculate total if not set
+                $totalAmount = floatval($p->total_amount ?? 0);
+                if ($totalAmount == 0) {
+                    $totalAmount = $amountDue + $interestAmount;
+                }
+                
+                // Calculate balance
+                $amountPaid = floatval($p->amount_paid ?? 0);
+                $balance = $totalAmount - $amountPaid;
+                
+                return [
+                    'id' => $p->id,
+                    'payment_number' => $p->payment_number,
+                    'contract_number' => $p->contract->contract_number,
+                    'tenant' => $p->contract->tenant->contact_person,
+                    'amount_due' => $amountDue,
+                    'interest' => $interestAmount,
+                    'total' => $totalAmount,
+                    'balance' => $balance,
+                    'due_date' => $p->due_date,
+                    'status' => $p->status,
+                    'days_overdue' => $p->status === 'overdue' ? Carbon::parse($p->due_date)->diffInDays(Carbon::today()) : 0,
+                ];
+            });
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -89,20 +125,8 @@ class CashierController extends Controller
                     'urgent' => (isset($grouped['urgent']) ? $grouped['urgent']->count() : 0) . ' payments (7-30 days overdue)',
                     'warning' => (isset($grouped['warning']) ? $grouped['warning']->count() : 0) . ' payments (overdue)',
                     'pending' => (isset($grouped['pending']) ? $grouped['pending']->count() : 0) . ' payments (pending)',
-                    'total_balance' => $payments->sum('balance'),
-                    'payments' => $payments->map(fn($p) => [
-                        'id' => $p->id,
-                        'payment_number' => $p->payment_number,
-                        'contract_number' => $p->contract->contract_number,
-                        'tenant' => $p->contract->tenant->contact_person,
-                        'amount_due' => $p->amount_due,
-                        'interest' => $p->interest_amount,
-                        'total' => $p->total_amount,
-                        'balance' => $p->balance,
-                        'due_date' => $p->due_date,
-                        'status' => $p->status,
-                        'days_overdue' => $p->status === 'overdue' ? Carbon::parse($p->due_date)->diffInDays(Carbon::today()) : 0,
-                    ])
+                    'total_balance' => $mappedPayments->sum('balance'),
+                    'payments' => $mappedPayments
                 ]
             ]);
         } catch (\Exception $e) {
