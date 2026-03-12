@@ -15,7 +15,12 @@ class RentalSpaceController extends Controller
      */
     public function index(Request $request)
     {
-        $query = RentalSpace::withCount('contracts');
+        // Load with relationship and count active contracts
+        $query = RentalSpace::with(['contracts' => function ($q) {
+            $q->where('status', 'active');
+        }])->withCount(['contracts as active_contracts_count' => function ($q) {
+            $q->where('status', 'active');
+        }]);
 
         // Search
         if ($request->has('search')) {
@@ -32,9 +37,23 @@ class RentalSpaceController extends Controller
             $query->where('space_type', $request->space_type);
         }
 
-        // Filter by status
+        // Filter by status (but also consider active contracts)
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            $status = strtolower($request->status);
+            if ($status === 'occupied') {
+                // Show spaces with active contracts
+                $query->whereHas('contracts', function ($q) {
+                    $q->where('status', 'active');
+                });
+            } elseif ($status === 'available') {
+                // Show spaces without active contracts
+                $query->whereDoesntHave('contracts', function ($q) {
+                    $q->where('status', 'active');
+                });
+            } else {
+                // Filter by the status field
+                $query->where('status', $status);
+            }
         }
 
         // Sort
@@ -43,6 +62,13 @@ class RentalSpaceController extends Controller
         $query->orderBy($sortBy, $sortOrder);
 
         $spaces = $query->paginate($request->get('per_page', 15));
+        
+        // Map the response to include computed occupancy status
+        $spaces->getCollection()->transform(function ($space) {
+            $space->is_occupied = $space->active_contracts_count > 0;
+            $space->occupancy_status = $space->active_contracts_count > 0 ? 'occupied' : 'available';
+            return $space;
+        });
 
         AuditLog::log('view', 'RentalSpace', null, 'Viewed rental space list');
 
