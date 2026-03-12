@@ -58,7 +58,8 @@ class CashierController extends Controller
         try {
             $status = $request->get('status', 'all'); // all, pending, overdue, paid
             
-            $query = Payment::with(['contract.tenant.user', 'contract.rentalSpace']);
+            // Load contract with tenant details
+            $query = Payment::with(['contract.tenant.user']);
             
             if ($status === 'paid') {
                 $query->where('status', 'paid');
@@ -84,10 +85,10 @@ class CashierController extends Controller
             
             // Map payments with guaranteed calculations
             $mappedPayments = $payments->map(function($p) {
-                // Ensure amount_due is set (fallback to contract's rental space monthly rental)
+                // amount_due should come from payment record, fallback to contract's monthly_rental
                 $amountDue = floatval($p->amount_due ?? 0);
-                if ($amountDue <= 0 && $p->contract && $p->contract->rentalSpace) {
-                    $amountDue = floatval($p->contract->rentalSpace->monthly_rental ?? 0);
+                if ($amountDue <= 0 && $p->contract) {
+                    $amountDue = floatval($p->contract->monthly_rental ?? 0);
                 }
                 
                 // Calculate interest if not set
