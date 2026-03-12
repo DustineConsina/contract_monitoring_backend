@@ -65,46 +65,11 @@ class PaymentController extends Controller
 
         $payments = $query->paginate($request->get('per_page', 15));
 
-        // Transform payments to ensure all numeric fields are properly formatted
-        $mappedPayments = $payments->map(function ($payment) {
-            return [
-                'id' => $payment->id,
-                'payment_number' => $payment->payment_number,
-                'contract_id' => $payment->contract_id,
-                'tenant_id' => $payment->tenant_id,
-                'billing_period_start' => $payment->billing_period_start,
-                'billing_period_end' => $payment->billing_period_end,
-                'due_date' => $payment->due_date,
-                'amount_due' => floatval($payment->amount_due ?? 0),
-                'interest_amount' => floatval($payment->interest_amount ?? 0),
-                'total_amount' => floatval($payment->total_amount ?? 0),
-                'amount_paid' => floatval($payment->amount_paid ?? 0),
-                'balance' => floatval($payment->balance ?? 0),
-                'payment_method' => $payment->payment_method,
-                'reference_number' => $payment->reference_number,
-                'remarks' => $payment->remarks,
-                'status' => $payment->status,
-                'tenant' => $payment->tenant,
-                'contract' => $payment->contract,
-            ];
-        });
-
-        // Re-paginate with mapped data
-        $paginated = new \Illuminate\Pagination\Paginator(
-            $mappedPayments,
-            $payments->perPage(),
-            $payments->currentPage(),
-            [
-                'path' => $payments->path(),
-                'query' => $payments->query(),
-            ]
-        );
-
         AuditLog::log('view', 'Payment', null, 'Viewed payment list');
 
         return response()->json([
             'success' => true,
-            'data' => $paginated
+            'data' => $payments
         ]);
     }
 
@@ -120,19 +85,9 @@ class PaymentController extends Controller
 
         AuditLog::log('view', 'Payment', $payment->id, "Viewed payment: {$payment->payment_number}");
 
-        // Ensure all financial fields are present and properly formatted
-        $paymentArray = $payment->toArray();
-        
-        // Add calculated fields and ensure numeric values are set
-        $paymentArray['amountDue'] = floatval($paymentArray['amount_due'] ?? 0);
-        $paymentArray['interestAmount'] = floatval($paymentArray['interest_amount'] ?? 0);
-        $paymentArray['totalAmount'] = floatval($paymentArray['total_amount'] ?? 0);
-        $paymentArray['amountPaid'] = floatval($paymentArray['amount_paid'] ?? 0);
-        $paymentArray['balance'] = floatval($paymentArray['balance'] ?? 0);
-
         return response()->json([
             'success' => true,
-            'data' => $paymentArray
+            'data' => $payment
         ]);
     }
 
