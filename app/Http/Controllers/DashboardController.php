@@ -100,19 +100,25 @@ class DashboardController extends Controller
             ];
         }
 
-        // Space utilization
+        // Space utilization (based on actual active contracts, not status field)
         $spaceUtilization = [
             'food_stall' => [
                 'total' => RentalSpace::where('space_type', 'food_stall')->count(),
-                'occupied' => RentalSpace::where('space_type', 'food_stall')->where('status', 'occupied')->count(),
+                'occupied' => RentalSpace::where('space_type', 'food_stall')->whereHas('contracts', function ($q) {
+                    $q->where('status', 'active');
+                })->count(),
             ],
             'market_hall' => [
                 'total' => RentalSpace::where('space_type', 'market_hall')->count(),
-                'occupied' => RentalSpace::where('space_type', 'market_hall')->where('status', 'occupied')->count(),
+                'occupied' => RentalSpace::where('space_type', 'market_hall')->whereHas('contracts', function ($q) {
+                    $q->where('status', 'active');
+                })->count(),
             ],
             'banera_warehouse' => [
                 'total' => RentalSpace::where('space_type', 'banera_warehouse')->count(),
-                'occupied' => RentalSpace::where('space_type', 'banera_warehouse')->where('status', 'occupied')->count(),
+                'occupied' => RentalSpace::where('space_type', 'banera_warehouse')->whereHas('contracts', function ($q) {
+                    $q->where('status', 'active');
+                })->count(),
             ],
         ];
 
