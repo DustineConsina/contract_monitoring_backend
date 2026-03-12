@@ -220,11 +220,21 @@ class ReportController extends Controller
      */
     public function dashboardStats(Request $request)
     {
+        // Count spaces without active contracts (true available)
+        $availableSpacesCount = RentalSpace::whereDoesntHave('contracts', function ($q) {
+            $q->where('status', 'active');
+        })->count();
+        
+        // Count spaces with active contracts (truly occupied)
+        $occupiedSpacesCount = RentalSpace::whereHas('contracts', function ($q) {
+            $q->where('status', 'active');
+        })->count();
+        
         $stats = [
             'totalTenants' => Tenant::where('status', 'active')->count(),
             'totalRentalSpaces' => RentalSpace::count(),
-            'availableSpaces' => RentalSpace::where('status', 'available')->count(),
-            'occupiedSpaces' => RentalSpace::where('status', 'occupied')->count(),
+            'availableSpaces' => $availableSpacesCount,
+            'occupiedSpaces' => $occupiedSpacesCount,
             'totalContracts' => Contract::count(),
             'activeContracts' => Contract::where('status', 'active')->count(),
             'expiringContracts' => Contract::where('status', 'active')

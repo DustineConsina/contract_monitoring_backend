@@ -31,11 +31,21 @@ class DashboardController extends Controller
      */
     private function adminDashboard()
     {
+        // Count spaces without active contracts (true available)
+        $availableSpacesCount = RentalSpace::whereDoesntHave('contracts', function ($q) {
+            $q->where('status', 'active');
+        })->count();
+        
+        // Count spaces with active contracts (truly occupied)
+        $occupiedSpacesCount = RentalSpace::whereHas('contracts', function ($q) {
+            $q->where('status', 'active');
+        })->count();
+        
         $stats = [
             'total_tenants' => Tenant::where('status', 'active')->count(),
             'total_rental_spaces' => RentalSpace::count(),
-            'available_spaces' => RentalSpace::where('status', 'available')->count(),
-            'occupied_spaces' => RentalSpace::where('status', 'occupied')->count(),
+            'available_spaces' => $availableSpacesCount,
+            'occupied_spaces' => $occupiedSpacesCount,
             'active_contracts' => Contract::where('status', 'active')->count(),
             'expiring_contracts' => Contract::where('status', 'active')
                 ->where('end_date', '<=', Carbon::now()->addDays(30))

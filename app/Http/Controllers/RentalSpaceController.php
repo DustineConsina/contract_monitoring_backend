@@ -210,7 +210,11 @@ class RentalSpaceController extends Controller
      */
     public function getAvailableSpaces(Request $request)
     {
-        $query = RentalSpace::where('status', 'available');
+        // Get spaces without active contracts
+        $query = RentalSpace::where('status', 'available')
+            ->whereDoesntHave('contracts', function ($q) {
+                $q->where('status', 'active');
+            });
 
         if ($request->has('space_type')) {
             $query->where('space_type', $request->space_type);
@@ -229,25 +233,46 @@ class RentalSpaceController extends Controller
      */
     public function getStatistics()
     {
+        // Count spaces without active contracts
+        $availableSpacesCount = RentalSpace::where('status', 'available')
+            ->whereDoesntHave('contracts', function ($q) {
+                $q->where('status', 'active');
+            })->count();
+        
+        // Count spaces with active contracts
+        $occupiedSpacesCount = RentalSpace::where('status', 'occupied')
+            ->orWhereHas('contracts', function ($q) {
+                $q->where('status', 'active');
+            })->count();
+        
         $stats = [
             'total_spaces' => RentalSpace::count(),
-            'available_spaces' => RentalSpace::where('status', 'available')->count(),
-            'occupied_spaces' => RentalSpace::where('status', 'occupied')->count(),
+            'available_spaces' => $availableSpacesCount,
+            'occupied_spaces' => $occupiedSpacesCount,
             'maintenance_spaces' => RentalSpace::where('status', 'maintenance')->count(),
             'by_type' => [
                 'food_stall' => [
                     'total' => RentalSpace::where('space_type', 'food_stall')->count(),
-                    'available' => RentalSpace::where('space_type', 'food_stall')->where('status', 'available')->count(),
+                    'available' => RentalSpace::where('space_type', 'food_stall')
+                        ->whereDoesntHave('contracts', function ($q) {
+                            $q->where('status', 'active');
+                        })->count(),
                     'occupied' => RentalSpace::where('space_type', 'food_stall')->where('status', 'occupied')->count(),
                 ],
                 'market_hall' => [
                     'total' => RentalSpace::where('space_type', 'market_hall')->count(),
-                    'available' => RentalSpace::where('space_type', 'market_hall')->where('status', 'available')->count(),
+                    'available' => RentalSpace::where('space_type', 'market_hall')
+                        ->whereDoesntHave('contracts', function ($q) {
+                            $q->where('status', 'active');
+                        })->count(),
                     'occupied' => RentalSpace::where('space_type', 'market_hall')->where('status', 'occupied')->count(),
                 ],
                 'banera_warehouse' => [
                     'total' => RentalSpace::where('space_type', 'banera_warehouse')->count(),
-                    'available' => RentalSpace::where('space_type', 'banera_warehouse')->where('status', 'available')->count(),
+                    'available' => RentalSpace::where('space_type', 'banera_warehouse')
+                        ->whereDoesntHave('contracts', function ($q) {
+                            $q->where('status', 'active');
+                        })->count(),
                     'occupied' => RentalSpace::where('space_type', 'banera_warehouse')->where('status', 'occupied')->count(),
                 ],
             ],
