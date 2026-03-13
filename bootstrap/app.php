@@ -16,8 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\CheckRole::class,
         ]);
         
-        // Add CORS middleware
-        $middleware->append(\App\Http\Middleware\CorsMiddleware::class);
+        // Add CORS middleware - prepend instead of append to run before auth
+        $middleware->prepend(\App\Http\Middleware\CorsMiddleware::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

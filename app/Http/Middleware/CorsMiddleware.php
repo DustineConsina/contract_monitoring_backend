@@ -28,20 +28,21 @@ class CorsMiddleware
 
         $origin = $request->header('origin');
 
-        // Handle OPTIONS requests for CORS preflight
+        // Handle preflight OPTIONS requests
         if ($request->getMethod() === 'OPTIONS') {
             $response = new Response('', 200);
         } else {
             $response = $next($request);
         }
 
-        // Set CORS headers if origin is allowed
+        // Always set CORS headers if origin is allowed
         if ($origin && in_array($origin, $allowedOrigins)) {
             $response->header('Access-Control-Allow-Origin', $origin)
                 ->header('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS')
-                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-CSRF-TOKEN')
                 ->header('Access-Control-Allow-Credentials', 'true')
-                ->header('Access-Control-Max-Age', '86400');
+                ->header('Access-Control-Max-Age', '86400')
+                ->header('Vary', 'Origin');
         }
 
         return $response;
