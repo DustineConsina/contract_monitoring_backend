@@ -46,6 +46,16 @@ class TenantController extends Controller
 
         $tenants = $query->paginate($request->get('per_page', 15));
 
+        // Add profile picture URLs to each tenant
+        $tenants->getCollection()->transform(function ($tenant) {
+            $tenantArray = $tenant->toArray();
+            if ($tenant->profile_picture) {
+                $tenantArray['profile_picture_url'] = url('/api/storage/' . $tenant->profile_picture);
+                $tenantArray['profilePicture'] = url('/api/storage/' . $tenant->profile_picture);
+            }
+            return $tenantArray;
+        });
+
         AuditLog::log('view', 'Tenant', null, 'Viewed tenant list');
 
         return response()->json([
