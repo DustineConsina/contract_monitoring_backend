@@ -191,7 +191,7 @@ class ContractController extends Controller
             'deposit_amount' => 'nullable|numeric|min:0',
             'interest_rate' => 'nullable|numeric|min:0|max:100',
             'terms_conditions' => 'nullable|string',
-            'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
+            'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:51200',
         ]);
 
         if ($validator->fails()) {
@@ -435,7 +435,7 @@ class ContractController extends Controller
             'interest_rate' => 'sometimes|numeric|min:0|max:100',
             'terms_conditions' => 'sometimes|string',
             'status' => 'sometimes|in:active,expired,terminated,pending',
-            'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
+            'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:51200',
         ]);
 
         if ($validator->fails()) {

@@ -510,7 +510,7 @@ class TenantController extends Controller
 
         // Validate the uploaded file
         $validator = Validator::make($request->all(), [
-            'profile_picture' => 'required|image|max:5120', // 5MB max, accepts all image types
+            'profile_picture' => 'required|image|max:51200', // 50MB max, accepts all image types
         ]);
 
         if ($validator->fails()) {
