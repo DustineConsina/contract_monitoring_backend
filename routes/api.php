@@ -2,7 +2,6 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Schema;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TenantController;
@@ -39,33 +38,6 @@ Route::get('/health', function() {
         return response()->json([
             'message' => 'Database connection failed',
             'status' => 'error',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-});
-
-// TEMPORARY: Run migrations (remove after use)
-Route::get('/migrate', function() {
-    try {
-        // Check if profile_picture column exists
-        if (!\Schema::hasColumn('tenants', 'profile_picture')) {
-            \Schema::table('tenants', function ($table) {
-                $table->string('profile_picture')->nullable()->after('qr_code');
-            });
-            return response()->json([
-                'success' => true,
-                'message' => 'profile_picture column added successfully to tenants table'
-            ]);
-        }
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'profile_picture column already exists'
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed: ' . $e->getMessage(),
             'error' => $e->getMessage()
         ], 500);
     }

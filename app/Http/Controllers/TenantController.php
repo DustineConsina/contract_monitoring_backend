@@ -223,9 +223,16 @@ class TenantController extends Controller
 
         AuditLog::log('view', 'Tenant', $tenant->id, "Viewed tenant: {$tenant->business_name}");
 
+        // Add full URLs for profile picture if it exists
+        $tenantArray = $tenant->toArray();
+        if ($tenant->profile_picture) {
+            $tenantArray['profile_picture_url'] = Storage::url($tenant->profile_picture);
+            $tenantArray['profilePicture_url'] = Storage::url($tenant->profile_picture);
+        }
+
         return response()->json([
             'success' => true,
-            'data' => $tenant
+            'data' => $tenantArray
         ]);
     }
 
