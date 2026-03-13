@@ -47,6 +47,7 @@ Route::get('/health', function() {
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/qr-scan', [TenantController::class, 'scanQRCode']);
+Route::get('/storage/{path}', [TenantController::class, 'serveFile'])->where('path', '.*');
 Route::get('/contracts/{id}/view', [ContractController::class, 'viewQRContract']);
 Route::get('/contracts/{id}/lease', [ContractController::class, 'downloadLease']);
 

@@ -226,8 +226,9 @@ class TenantController extends Controller
         // Add full URLs for profile picture if it exists
         $tenantArray = $tenant->toArray();
         if ($tenant->profile_picture) {
-            $tenantArray['profile_picture_url'] = Storage::url($tenant->profile_picture);
-            $tenantArray['profilePicture_url'] = Storage::url($tenant->profile_picture);
+            // Use API storage endpoint instead of /storage/ symlink
+            $tenantArray['profile_picture_url'] = url('/api/storage/' . $tenant->profile_picture);
+            $tenantArray['profilePicture_url'] = url('/api/storage/' . $tenant->profile_picture);
         }
 
         return response()->json([
@@ -532,13 +533,16 @@ class TenantController extends Controller
                 'path' => $path
             ]);
 
+            // Build API storage endpoint URL
+            $apiStorageUrl = url('/api/storage/' . $path);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Profile picture uploaded successfully',
                 'data' => [
                     'profilePicture' => $path,
                     'profile_picture' => $path,
-                    'url' => Storage::url($path)
+                    'url' => $apiStorageUrl
                 ]
             ]);
         } catch (\Exception $e) {
@@ -553,5 +557,34 @@ class TenantController extends Controller
                 'message' => 'Failed to upload picture: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Serve file from storage with proper headers
+     */
+    public function serveFile($path)
+    {
+        // Prevent directory traversal attacks
+        if (strpos($path, '..') !== false || strpos($path, './') === 0) {
+            return response()->json(['error' => 'Invalid path'], 403);
+        }
+
+        $fullPath = storage_path('app/public/' . $path);
+        
+        if (!file_exists($fullPath)) {
+            return response()->json(['error' => 'File not found'], 404);
+        }
+
+        // Get MIME type
+        $mimeType = mime_content_type($fullPath);
+        
+        // Send file with proper headers
+        return response()->file($fullPath, [
+            'Content-Type' => $mimeType,
+            'Cache-Control' => 'public, max-age=31536000',
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
+            'Access-Control-Allow-Headers' => 'Content-Type'
+        ]);
     }
 }
