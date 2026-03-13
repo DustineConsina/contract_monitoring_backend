@@ -475,4 +475,63 @@ class TenantController extends Controller
 
         return $this->getQRCodeWithDetails($tenant->id);
     }
+
+    /**
+     * Upload tenant profile picture
+     */
+    public function uploadPicture(Request $request, $id)
+    {
+        $tenant = Tenant::findOrFail($id);
+
+        // Validate the uploaded file
+        $validator = Validator::make($request->all(), [
+            'profile_picture' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB max
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid image file',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            // Delete old picture if exists
+            if ($tenant->profile_picture) {
+                Storage::disk('public')->delete($tenant->profile_picture);
+            }
+
+            // Store new picture
+            $file = $request->file('profile_picture');
+            $filename = 'tenant-' . $tenant->id . '-' . time() . '.' . $file->getClientOriginalExtension();
+            $path = 'profile-pictures/' . $filename;
+            
+            Storage::disk('public')->put($path, file_get_contents($file));
+
+            // Update tenant record
+            $tenant->profile_picture = $path;
+            $tenant->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Profile picture uploaded successfully',
+                'data' => [
+                    'profilePicture' => $path,
+                    'profile_picture' => $path,
+                    'url' => Storage::url($path)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Profile picture upload failed', [
+                'tenant_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload picture: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

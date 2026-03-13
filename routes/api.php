@@ -65,6 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('tenants', TenantController::class);
     Route::get('/tenants/{id}/qr-code', [TenantController::class, 'getQRCodeWithDetails']);
     Route::post('/tenants/{id}/generate-qr', [TenantController::class, 'generateQRCode']);
+    Route::post('/tenants/{id}/upload-picture', [TenantController::class, 'uploadPicture']);
 
     // Contracts
     Route::apiResource('contracts', ContractController::class);

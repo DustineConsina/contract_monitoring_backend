@@ -19,6 +19,7 @@ class Tenant extends Model
         'contact_person',
         'contact_number',
         'qr_code',
+        'profile_picture',
         'status',
     ];
 
