@@ -51,8 +51,10 @@ class TenantController extends Controller
         $tenants->getCollection()->transform(function ($tenant) {
             $tenantArray = $tenant->toArray();
             if ($tenant->profile_picture) {
-                $tenantArray['profile_picture_url'] = url('/api/storage/' . $tenant->profile_picture);
-                $tenantArray['profilePicture'] = url('/api/storage/' . $tenant->profile_picture);
+                // Force HTTPS URLs for production
+                $baseUrl = 'https://contractmonitoringbackend-production.up.railway.app/api';
+                $tenantArray['profile_picture_url'] = $baseUrl . '/storage/' . $tenant->profile_picture;
+                $tenantArray['profilePicture'] = $baseUrl . '/storage/' . $tenant->profile_picture;
             }
             return $tenantArray;
         });
@@ -237,9 +239,10 @@ class TenantController extends Controller
         // Add full URLs for profile picture if it exists
         $tenantArray = $tenant->toArray();
         if ($tenant->profile_picture) {
-            // Use API storage endpoint instead of /storage/ symlink
-            $tenantArray['profile_picture_url'] = url('/api/storage/' . $tenant->profile_picture);
-            $tenantArray['profilePicture_url'] = url('/api/storage/' . $tenant->profile_picture);
+            // Force HTTPS URLs for production
+            $baseUrl = 'https://contractmonitoringbackend-production.up.railway.app/api';
+            $tenantArray['profile_picture_url'] = $baseUrl . '/storage/' . $tenant->profile_picture;
+            $tenantArray['profilePicture_url'] = $baseUrl . '/storage/' . $tenant->profile_picture;
         }
 
         return response()->json([
