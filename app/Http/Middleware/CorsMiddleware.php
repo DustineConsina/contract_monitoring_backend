@@ -15,9 +15,10 @@ class CorsMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Get allowed origins - include Vercel frontend and any localhost origins
+        // Get allowed origins - include all Vercel frontend variations
         $allowedOrigins = [
-            'https://contract-monitoring-frontend-b8t2.vercel.app',
+            'https://contract-monitoring-frontend.vercel.app',      // Current Vercel URL
+            'https://contract-monitoring-frontend-b8t2.vercel.app', // Old Vercel URL
             'https://contractmonitoringbackend-production.up.railway.app',
             'http://localhost:3000',
             'http://127.0.0.1:3000',
@@ -27,15 +28,22 @@ class CorsMiddleware
 
         $origin = $request->header('origin');
 
-        if (in_array($origin, $allowedOrigins)) {
-            return $next($request)
-                ->header('Access-Control-Allow-Origin', $origin)
-                ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+        // Handle OPTIONS requests for CORS preflight
+        if ($request->getMethod() === 'OPTIONS') {
+            $response = new Response('', 200);
+        } else {
+            $response = $next($request);
+        }
+
+        // Set CORS headers if origin is allowed
+        if ($origin && in_array($origin, $allowedOrigins)) {
+            $response->header('Access-Control-Allow-Origin', $origin)
+                ->header('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS')
+                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
                 ->header('Access-Control-Allow-Credentials', 'true')
                 ->header('Access-Control-Max-Age', '86400');
         }
 
-        return $next($request);
+        return $response;
     }
 }
