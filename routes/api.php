@@ -46,39 +46,25 @@ Route::get('/health', function() {
 // TEMPORARY: Run migrations (remove after use)
 Route::get('/migrate', function() {
     try {
-        // Mark all Laravel default migrations as completed if tables exist
-        $defaultMigrations = [
-            '0001_01_01_000000_create_users_table',
-            '0001_01_01_000001_create_cache_table', 
-            '0001_01_01_000002_create_jobs_table',
-            '2019_12_14_000001_create_personal_access_tokens_table' // Sanctum
-        ];
-        
-        foreach ($defaultMigrations as $migration) {
-            $exists = \DB::table('migrations')->where('migration', $migration)->exists();
-            if (!$exists) {
-                \DB::table('migrations')->insert([
-                    'migration' => $migration,
-                    'batch' => 1,
-                ]);
-            }
+        // Check if profile_picture column exists
+        if (!\Schema::hasColumn('tenants', 'profile_picture')) {
+            \Schema::table('tenants', function ($table) {
+                $table->string('profile_picture')->nullable()->after('qr_code');
+            });
+            return response()->json([
+                'success' => true,
+                'message' => 'profile_picture column added successfully to tenants table'
+            ]);
         }
-        
-        // Now run pending migrations
-        \Artisan::call('migrate', [
-            '--force' => true,
-            '--no-interaction' => true
-        ]);
         
         return response()->json([
             'success' => true,
-            'message' => 'Migrations completed successfully',
-            'output' => \Artisan::output()
+            'message' => 'profile_picture column already exists'
         ]);
     } catch (\Exception $e) {
         return response()->json([
             'success' => false,
-            'message' => 'Migration failed: ' . $e->getMessage(),
+            'message' => 'Failed: ' . $e->getMessage(),
             'error' => $e->getMessage()
         ], 500);
     }
