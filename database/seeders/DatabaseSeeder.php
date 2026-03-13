@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             RentalSpaceSeeder::class,
             TenantSeeder::class,
             ContractSeeder::class,
+            PaymentSeeder::class,
         ]);
     }
 }
