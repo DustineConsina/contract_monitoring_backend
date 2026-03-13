@@ -532,10 +532,14 @@ class TenantController extends Controller
                 
                 $deleted = Storage::disk('public')->delete($tenant->profile_picture);
                 
+                // Verify deletion
+                $stillExists = Storage::disk('public')->exists($tenant->profile_picture);
+                
                 \Log::info('Old picture deletion result', [
                     'tenant_id' => $id,
                     'deleted' => $deleted,
-                    'path' => $tenant->profile_picture
+                    'path' => $tenant->profile_picture,
+                    'still_exists' => $stillExists
                 ]);
             }
 
@@ -550,18 +554,25 @@ class TenantController extends Controller
             if (!$stored) {
                 throw new \Exception('Failed to store the uploaded file');
             }
+            
+            // Verify new file exists
+            $exists = Storage::disk('public')->exists($path);
+            if (!$exists) {
+                throw new \Exception('Uploaded file could not be verified');
+            }
 
             // Update tenant record
             $tenant->profile_picture = $path;
             $tenant->save();
-
+            
             \Log::info('Profile picture uploaded successfully', [
                 'tenant_id' => $id,
-                'path' => $path
+                'path' => $path,
+                'file_exists' => $exists
             ]);
 
-            // Build API storage endpoint URL
-            $apiStorageUrl = url('/api/storage/' . $path);
+            // Build API storage endpoint URL with cache buster
+            $apiStorageUrl = url('/api/storage/' . $path . '?t=' . time());
 
             return response()->json([
                 'success' => true,
