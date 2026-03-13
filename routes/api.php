@@ -50,7 +50,8 @@ Route::get('/migrate', function() {
         $defaultMigrations = [
             '0001_01_01_000000_create_users_table',
             '0001_01_01_000001_create_cache_table', 
-            '0001_01_01_000002_create_jobs_table'
+            '0001_01_01_000002_create_jobs_table',
+            '2019_12_14_000001_create_personal_access_tokens_table' // Sanctum
         ];
         
         foreach ($defaultMigrations as $migration) {
@@ -78,8 +79,7 @@ Route::get('/migrate', function() {
         return response()->json([
             'success' => false,
             'message' => 'Migration failed: ' . $e->getMessage(),
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
+            'error' => $e->getMessage()
         ], 500);
     }
 });
