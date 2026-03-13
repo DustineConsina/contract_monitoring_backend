@@ -481,6 +481,12 @@ class TenantController extends Controller
      */
     public function uploadPicture(Request $request, $id)
     {
+        \Log::info('Upload picture request received', [
+            'tenant_id' => $id,
+            'has_file' => $request->hasFile('profile_picture'),
+            'headers' => $request->headers->all()
+        ]);
+
         $tenant = Tenant::findOrFail($id);
 
         // Validate the uploaded file
@@ -489,6 +495,7 @@ class TenantController extends Controller
         ]);
 
         if ($validator->fails()) {
+            \Log::error('Validation failed for upload', ['errors' => $validator->errors()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid image file',
@@ -513,6 +520,11 @@ class TenantController extends Controller
             $tenant->profile_picture = $path;
             $tenant->save();
 
+            \Log::info('Profile picture uploaded successfully', [
+                'tenant_id' => $id,
+                'path' => $path
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Profile picture uploaded successfully',
@@ -525,7 +537,8 @@ class TenantController extends Controller
         } catch (\Exception $e) {
             \Log::error('Profile picture upload failed', [
                 'tenant_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([

@@ -80,8 +80,17 @@ class PaymentController extends Controller
     {
         $payment = Payment::with([
             'tenant.user',
-            'contract.rentalSpace'
+            'contract' => function($query) {
+                $query->with('rentalSpace');
+            }
         ])->findOrFail($id);
+
+        // Ensure financial fields are present and properly typed
+        $payment->amount_due = (float)$payment->amount_due;
+        $payment->interest_amount = (float)$payment->interest_amount;
+        $payment->total_amount = (float)$payment->total_amount;
+        $payment->amount_paid = (float)$payment->amount_paid;
+        $payment->balance = (float)$payment->balance;
 
         AuditLog::log('view', 'Payment', $payment->id, "Viewed payment: {$payment->payment_number}");
 
