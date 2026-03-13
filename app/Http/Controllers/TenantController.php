@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class TenantController extends Controller
 {
@@ -524,15 +525,31 @@ class TenantController extends Controller
         try {
             // Delete old picture if exists
             if ($tenant->profile_picture) {
-                Storage::disk('public')->delete($tenant->profile_picture);
+                \Log::info('Attempting to delete old picture', [
+                    'tenant_id' => $id,
+                    'old_picture_path' => $tenant->profile_picture
+                ]);
+                
+                $deleted = Storage::disk('public')->delete($tenant->profile_picture);
+                
+                \Log::info('Old picture deletion result', [
+                    'tenant_id' => $id,
+                    'deleted' => $deleted,
+                    'path' => $tenant->profile_picture
+                ]);
             }
 
             // Store new picture
             $file = $request->file('profile_picture');
-            $filename = 'tenant-' . $tenant->id . '-' . time() . '.' . $file->getClientOriginalExtension();
+            $extension = $file->getClientOriginalExtension();
+            $filename = 'tenant-' . $tenant->id . '-' . time() . '-' . Str::random(8) . '.' . $extension;
             $path = 'profile-pictures/' . $filename;
             
-            Storage::disk('public')->put($path, file_get_contents($file));
+            $stored = Storage::disk('public')->put($path, file_get_contents($file));
+            
+            if (!$stored) {
+                throw new \Exception('Failed to store the uploaded file');
+            }
 
             // Update tenant record
             $tenant->profile_picture = $path;
