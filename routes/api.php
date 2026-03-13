@@ -43,6 +43,24 @@ Route::get('/health', function() {
     }
 });
 
+// TEMPORARY: Run migrations (remove after use)
+Route::get('/migrate', function() {
+    try {
+        \Artisan::call('migrate', ['--force' => true]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Migrations completed successfully',
+            'output' => \Artisan::output()
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Migration failed',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+});
+
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
