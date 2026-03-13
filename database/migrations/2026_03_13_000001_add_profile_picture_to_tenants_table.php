@@ -11,9 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('tenants', function (Blueprint $table) {
-            $table->string('profile_picture')->nullable()->after('qr_code'); // Profile picture path
-        });
+        // Check if column doesn't exist before adding it
+        if (!Schema::hasColumn('tenants', 'profile_picture')) {
+            Schema::table('tenants', function (Blueprint $table) {
+                $table->string('profile_picture')->nullable()->after('qr_code'); // Profile picture path
+            });
+        }
     }
 
     /**

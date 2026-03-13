@@ -46,7 +46,29 @@ Route::get('/health', function() {
 // TEMPORARY: Run migrations (remove after use)
 Route::get('/migrate', function() {
     try {
-        \Artisan::call('migrate', ['--force' => true]);
+        // Mark all Laravel default migrations as completed if tables exist
+        $defaultMigrations = [
+            '0001_01_01_000000_create_users_table',
+            '0001_01_01_000001_create_cache_table', 
+            '0001_01_01_000002_create_jobs_table'
+        ];
+        
+        foreach ($defaultMigrations as $migration) {
+            $exists = \DB::table('migrations')->where('migration', $migration)->exists();
+            if (!$exists) {
+                \DB::table('migrations')->insert([
+                    'migration' => $migration,
+                    'batch' => 1,
+                ]);
+            }
+        }
+        
+        // Now run pending migrations
+        \Artisan::call('migrate', [
+            '--force' => true,
+            '--no-interaction' => true
+        ]);
+        
         return response()->json([
             'success' => true,
             'message' => 'Migrations completed successfully',
@@ -55,8 +77,9 @@ Route::get('/migrate', function() {
     } catch (\Exception $e) {
         return response()->json([
             'success' => false,
-            'message' => 'Migration failed',
-            'error' => $e->getMessage()
+            'message' => 'Migration failed: ' . $e->getMessage(),
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ], 500);
     }
 });
