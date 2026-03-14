@@ -128,6 +128,57 @@ class Contract extends Model
     }
 
     /**
+     * Create renewal notification for tenant.
+     */
+    public function createRenewalNotification()
+    {
+        try {
+            $daysUntilExpiry = $this->daysUntilExpiration();
+            
+            // Only create notification if not sent recently (within 7 days)
+            if ($this->last_notification_sent && $this->last_notification_sent->diffInDays(Carbon::now()) < 7) {
+                return false;
+            }
+
+            // Create notification for tenant user
+            if ($this->tenant && $this->tenant->user) {
+                Notification::create([
+                    'user_id' => $this->tenant->user_id,
+                    'type' => 'contract_renewal',
+                    'title' => 'Contract Renewal Notice',
+                    'message' => "Your lease contract #{$this->contract_number} for {$this->rentalSpace->name} will expire in {$daysUntilExpiry} days ({$this->end_date->format('M d, Y')}). Please contact management to discuss renewal options.",
+                    'data' => [
+                        'contract_id' => $this->id,
+                        'contract_number' => $this->contract_number,
+                        'rental_space' => $this->rentalSpace->name,
+                        'expiry_date' => $this->end_date->format('Y-m-d'),
+                        'days_until_expiry' => $daysUntilExpiry,
+                    ],
+                    'is_read' => false,
+                    'email_sent' => false,
+                ]);
+            }
+
+            // Update last notification sent timestamp
+            $this->update(['last_notification_sent' => Carbon::now()]);
+            
+            \Log::info('Contract renewal notification created', [
+                'contract_id' => $this->id,
+                'contract_number' => $this->contract_number,
+                'tenant_id' => $this->tenant_id,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            \Log::error('Failed to create renewal notification', [
+                'contract_id' => $this->id,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
      * Get days until expiration.
      */
     public function daysUntilExpiration()

@@ -17,15 +17,20 @@ class Kernel extends ConsoleKernel
                  ->dailyAt('06:00')
                  ->description('Update contract statuses (mark as for_renewal or expired)');
 
+        // Update payment statuses to overdue daily at 7 AM
+        $schedule->command('payments:update-overdue-status')
+                 ->dailyAt('07:00')
+                 ->description('Update overdue payment statuses');
+
         // Run demand letter generation daily at 8 AM
         $schedule->command('payments:generate-demand-letters')
                  ->dailyAt('08:00')
                  ->description('Generate and send demand letters for overdue payments');
 
-        // Update payment statuses to overdue daily at 7 AM
-        $schedule->command('payments:update-overdue-status')
-                 ->dailyAt('07:00')
-                 ->description('Update overdue payment statuses');
+        // Send contract renewal notifications daily at 9 AM
+        $schedule->command('contracts:send-renewal-notifications')
+                 ->dailyAt('09:00')
+                 ->description('Send renewal notifications for contracts expiring soon');
     }
 
     /**
