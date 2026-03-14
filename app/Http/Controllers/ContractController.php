@@ -358,10 +358,15 @@ class ContractController extends Controller
      */
     public function update(Request $request, $id)
     {
+        \Log::info('📝 UPDATE REQUEST RECEIVED - ID: ' . $id);
+        \Log::info('   Raw request data:', $request->all());
+        
         $contract = Contract::findOrFail($id);
 
         // Map camelCase to snake_case (handle both frontend field name variations)
         $data = $request->all();
+        
+        \Log::info('   Data BEFORE conversion:', ['keys' => array_keys($data), 'monthlyRent' => $data['monthlyRent'] ?? 'NOT SET', 'monthly_rental' => $data['monthly_rental'] ?? 'NOT SET']);
         
         // Map tenant and rental space IDs
         if (isset($data['tenantId'])) {
@@ -392,9 +397,11 @@ class ContractController extends Controller
         if (isset($data['monthlyRent'])) {
             $data['monthly_rental'] = $data['monthlyRent'];
             unset($data['monthlyRent']);
+            \Log::info('   ✅ Converted monthlyRent to monthly_rental: ' . $data['monthly_rental']);
         } elseif (isset($data['monthlyRental'])) {
             $data['monthly_rental'] = $data['monthlyRental'];
             unset($data['monthlyRental']);
+            \Log::info('   ✅ Converted monthlyRental to monthly_rental: ' . $data['monthly_rental']);
         }
         
         // Handle securityDeposit/depositAmount variations
@@ -463,13 +470,17 @@ class ContractController extends Controller
             $contract->end_date = $startDate->copy()->addMonths($duration)->subDay();
         }
 
-        \Log::info('📤 UPDATE CONTRACT - Data being saved:', [
-            'contract_id' => $contract->id,
-            'monthly_rental_in_data' => $data['monthly_rental'] ?? 'NOT SET',
-            'all_data' => $data
-        ]);
+        \Log::info('   Data AFTER conversion:', ['monthly_rental' => $data['monthly_rental'] ?? 'NOT SET']);
 
         $contract->fill($data)->save();
+        
+        // Immediately check database
+        $freshContract = Contract::find($contract->id);
+        \Log::info('   ✅ SAVED TO DB! Fresh from DB:', [
+            'id' => $freshContract->id,
+            'monthly_rental' => $freshContract->monthly_rental,
+            'deposit_amount' => $freshContract->deposit_amount,
+        ]);
 
         \Log::info('✅ CONTRACT UPDATED - New values:', [
             'contract_id' => $contract->id,
@@ -479,6 +490,12 @@ class ContractController extends Controller
         ]);
 
         AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
+
+        // Refresh the contract from database to ensure we have latest values
+        $contract->refresh();
+
+        // Refresh the contract from database to ensure we have latest values
+        $contract->refresh();
 
         return response()->json([
             'success' => true,
