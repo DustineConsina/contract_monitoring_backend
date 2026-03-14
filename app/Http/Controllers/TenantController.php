@@ -5,14 +5,19 @@ namespace App\Http\Controllers;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\AuditLog;
+use App\Services\CloudinaryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class TenantController extends Controller
 {
+    protected $cloudinary;
+
+    public function __construct(CloudinaryService $cloudinary)
+    {
+        $this->cloudinary = $cloudinary;
+    }
     /**
      * Display a listing of tenants
      */
@@ -51,10 +56,9 @@ class TenantController extends Controller
         $tenants->getCollection()->transform(function ($tenant) {
             $tenantArray = $tenant->toArray();
             if ($tenant->profile_picture) {
-                // Use Storage disk URL or construct from APP_URL
-                $appUrl = rtrim(env('APP_URL', 'http://localhost'), '/');
-                $tenantArray['profile_picture_url'] = $appUrl . '/storage/' . $tenant->profile_picture;
-                $tenantArray['profilePicture'] = $appUrl . '/storage/' . $tenant->profile_picture;
+                // Generate Cloudinary URL from public_id
+                $tenantArray['profile_picture_url'] = $this->cloudinary->generateUrl($tenant->profile_picture);
+                $tenantArray['profilePicture'] = $this->cloudinary->generateUrl($tenant->profile_picture);
             }
             return $tenantArray;
         });
@@ -239,10 +243,9 @@ class TenantController extends Controller
         // Add full URLs for profile picture if it exists
         $tenantArray = $tenant->toArray();
         if ($tenant->profile_picture) {
-            // Use APP_URL to construct correct storage URL
-            $appUrl = rtrim(env('APP_URL', 'http://localhost'), '/');
-            $tenantArray['profile_picture_url'] = $appUrl . '/storage/' . $tenant->profile_picture;
-            $tenantArray['profilePicture_url'] = $appUrl . '/storage/' . $tenant->profile_picture;
+            // Generate Cloudinary URL from public_id
+            $tenantArray['profile_picture_url'] = $this->cloudinary->generateUrl($tenant->profile_picture);
+            $tenantArray['profilePicture_url'] = $this->cloudinary->generateUrl($tenant->profile_picture);
         }
 
         return response()->json([
@@ -526,65 +529,49 @@ class TenantController extends Controller
         }
 
         try {
-            // Delete old picture if exists
+            // Delete old picture from Cloudinary if exists
             if ($tenant->profile_picture) {
-                \Log::info('Attempting to delete old picture', [
+                \Log::info('Attempting to delete old picture from Cloudinary', [
                     'tenant_id' => $id,
-                    'old_picture_path' => $tenant->profile_picture
+                    'public_id' => $tenant->profile_picture
                 ]);
                 
-                $deleted = Storage::disk('public')->delete($tenant->profile_picture);
-                
-                // Verify deletion
-                $stillExists = Storage::disk('public')->exists($tenant->profile_picture);
+                $deleted = $this->cloudinary->deleteFile($tenant->profile_picture);
                 
                 \Log::info('Old picture deletion result', [
                     'tenant_id' => $id,
                     'deleted' => $deleted,
-                    'path' => $tenant->profile_picture,
-                    'still_exists' => $stillExists
+                    'public_id' => $tenant->profile_picture
                 ]);
             }
 
-            // Store new picture
+            // Upload new picture to Cloudinary
             $file = $request->file('profile_picture');
-            $extension = $file->getClientOriginalExtension();
-            $filename = 'tenant-' . $tenant->id . '-' . time() . '-' . Str::random(8) . '.' . $extension;
-            $path = 'profile-pictures/' . $filename;
+            $public_id = 'tenant-' . $tenant->id . '-' . time();
             
-            $stored = Storage::disk('public')->put($path, file_get_contents($file));
+            $uploadResult = $this->cloudinary->uploadFile($file, 'profile-pictures', $public_id);
             
-            if (!$stored) {
-                throw new \Exception('Failed to store the uploaded file');
-            }
-            
-            // Verify new file exists
-            $exists = Storage::disk('public')->exists($path);
-            if (!$exists) {
-                throw new \Exception('Uploaded file could not be verified');
+            if (!$uploadResult['success']) {
+                throw new \Exception('Cloudinary upload failed: ' . $uploadResult['message']);
             }
 
-            // Update tenant record
-            $tenant->profile_picture = $path;
+            // Update tenant record with Cloudinary public_id
+            $tenant->profile_picture = $uploadResult['public_id'];
             $tenant->save();
             
-            \Log::info('Profile picture uploaded successfully', [
+            \Log::info('Profile picture uploaded to Cloudinary successfully', [
                 'tenant_id' => $id,
-                'path' => $path,
-                'file_exists' => $exists
+                'public_id' => $uploadResult['public_id'],
+                'url' => $uploadResult['url']
             ]);
-
-            // Build storage endpoint URL using APP_URL
-            $appUrl = rtrim(env('APP_URL', 'http://localhost'), '/');
-            $fileUrl = $appUrl . '/storage/' . $path . '?t=' . time();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Profile picture uploaded successfully',
                 'data' => [
-                    'profilePicture' => $path,
-                    'profile_picture' => $path,
-                    'url' => $fileUrl
+                    'profilePicture' => $uploadResult['public_id'],
+                    'profile_picture' => $uploadResult['public_id'],
+                    'url' => $uploadResult['url']
                 ]
             ]);
         } catch (\Exception $e) {
