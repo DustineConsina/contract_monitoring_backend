@@ -13,9 +13,22 @@ class CloudinaryService
 
     public function __construct()
     {
-        // Cloudinary SDK automatically reads CLOUDINARY_URL environment variable
-        // Format: cloudinary://api_key:api_secret@cloud_name
-        $this->cloudinary = new Cloudinary();
+        // Parse CLOUDINARY_URL if set, otherwise use individual env vars
+        $cloudinaryUrl = env('CLOUDINARY_URL');
+        
+        if ($cloudinaryUrl) {
+            // Parse cloudinary://key:secret@cloudname format
+            $this->cloudinary = new Cloudinary($cloudinaryUrl);
+        } else {
+            // Fallback to individual env variables
+            $this->cloudinary = new Cloudinary([
+                'cloud' => [
+                    'cloud_name' => env('CLOUDINARY_CLOUD_NAME', ''),
+                    'api_key' => env('CLOUDINARY_API_KEY', ''),
+                    'api_secret' => env('CLOUDINARY_API_SECRET', ''),
+                ]
+            ]);
+        }
 
         $this->uploadApi = new UploadApi($this->cloudinary);
     }
@@ -47,6 +60,11 @@ class CloudinaryService
                 $options
             );
 
+            \Log::info('Cloudinary upload successful', [
+                'public_id' => $result['public_id'],
+                'url' => $result['secure_url']
+            ]);
+
             return [
                 'success' => true,
                 'url' => $result['secure_url'],
@@ -54,7 +72,11 @@ class CloudinaryService
                 'resource_type' => $result['resource_type']
             ];
         } catch (\Exception $e) {
-            \Log::error('Cloudinary upload error: ' . $e->getMessage());
+            \Log::error('Cloudinary upload error', [
+                'error' => $e->getMessage(),
+                'file' => $file->getClientOriginalName(),
+                'trace' => $e->getTraceAsString()
+            ]);
             
             return [
                 'success' => false,

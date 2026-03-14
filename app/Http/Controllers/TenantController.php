@@ -56,9 +56,21 @@ class TenantController extends Controller
         $tenants->getCollection()->transform(function ($tenant) {
             $tenantArray = $tenant->toArray();
             if ($tenant->profile_picture) {
-                // Generate Cloudinary URL from public_id
-                $tenantArray['profile_picture_url'] = $this->cloudinary->generateUrl($tenant->profile_picture);
-                $tenantArray['profilePicture'] = $this->cloudinary->generateUrl($tenant->profile_picture);
+                try {
+                    // Generate Cloudinary URL from public_id
+                    $url = $this->cloudinary->generateUrl($tenant->profile_picture);
+                    $tenantArray['profile_picture_url'] = $url;
+                    $tenantArray['profilePicture'] = $url;
+                } catch (\Exception $e) {
+                    \Log::warning('Failed to generate Cloudinary URL', [
+                        'tenant_id' => $tenant->id,
+                        'public_id' => $tenant->profile_picture,
+                        'error' => $e->getMessage()
+                    ]);
+                    // Leave URL fields as null if Cloudinary fails
+                    $tenantArray['profile_picture_url'] = null;
+                    $tenantArray['profilePicture'] = null;
+                }
             }
             return $tenantArray;
         });
@@ -243,9 +255,20 @@ class TenantController extends Controller
         // Add full URLs for profile picture if it exists
         $tenantArray = $tenant->toArray();
         if ($tenant->profile_picture) {
-            // Generate Cloudinary URL from public_id
-            $tenantArray['profile_picture_url'] = $this->cloudinary->generateUrl($tenant->profile_picture);
-            $tenantArray['profilePicture_url'] = $this->cloudinary->generateUrl($tenant->profile_picture);
+            try {
+                // Generate Cloudinary URL from public_id
+                $url = $this->cloudinary->generateUrl($tenant->profile_picture);
+                $tenantArray['profile_picture_url'] = $url;
+                $tenantArray['profilePicture_url'] = $url;
+            } catch (\Exception $e) {
+                \Log::warning('Failed to generate Cloudinary URL for tenant detail', [
+                    'tenant_id' => $tenant->id,
+                    'public_id' => $tenant->profile_picture,
+                    'error' => $e->getMessage()
+                ]);
+                $tenantArray['profile_picture_url'] = null;
+                $tenantArray['profilePicture_url'] = null;
+            }
         }
 
         return response()->json([
