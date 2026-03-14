@@ -20,11 +20,23 @@ class CloudinaryService
                 $this->cloudinary = new Cloudinary($cloudinaryUrl);
             } else {
                 // Fallback to individual env variables
+                $cloudName = env('CLOUDINARY_CLOUD_NAME', '');
+                $apiKey = env('CLOUDINARY_API_KEY', '');
+                $apiSecret = env('CLOUDINARY_API_SECRET', '');
+                
+                if (!$cloudName || !$apiKey || !$apiSecret) {
+                    \Log::warning('Cloudinary credentials not fully configured', [
+                        'has_cloud_name' => (bool)$cloudName,
+                        'has_api_key' => (bool)$apiKey,
+                        'has_api_secret' => (bool)$apiSecret,
+                    ]);
+                }
+                
                 $this->cloudinary = new Cloudinary([
                     'cloud' => [
-                        'cloud_name' => env('CLOUDINARY_CLOUD_NAME', ''),
-                        'api_key' => env('CLOUDINARY_API_KEY', ''),
-                        'api_secret' => env('CLOUDINARY_API_SECRET', ''),
+                        'cloud_name' => $cloudName,
+                        'api_key' => $apiKey,
+                        'api_secret' => $apiSecret,
                     ]
                 ]);
             }

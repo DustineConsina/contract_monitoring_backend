@@ -52,8 +52,8 @@ class TenantController extends Controller
 
         $tenants = $query->paginate($request->get('per_page', 15));
 
-        // Add profile picture URLs to each tenant
-        $tenants->getCollection()->transform(function ($tenant) {
+        // Transform items with profile picture URLs
+        $items = $tenants->getCollection()->map(function ($tenant) {
             $tenantArray = $tenant->toArray();
             if ($tenant->profile_picture) {
                 try {
@@ -73,13 +73,20 @@ class TenantController extends Controller
                 }
             }
             return $tenantArray;
-        });
+        })->all();
 
-        AuditLog::log('view', 'Tenant', null, 'Viewed tenant list');
+        try {
+            AuditLog::log('view', 'Tenant', null, 'Viewed tenant list');
+        } catch (\Exception $e) {
+            \Log::warning('Failed to log audit', ['error' => $e->getMessage()]);
+        }
 
         return response()->json([
             'success' => true,
-            'data' => $tenants
+            'data' => array_merge(
+                $tenants->toArray(),
+                ['data' => $items]
+            )
         ]);
     }
 
@@ -226,7 +233,11 @@ class TenantController extends Controller
             \Log::warning("QR Code generation failed for tenant {$tenant->id}: " . $e->getMessage());
         }
 
-        AuditLog::log('create', 'Tenant', $tenant->id, "Created tenant: {$tenant->business_name}", null, $tenant->toArray());
+        try {
+            AuditLog::log('create', 'Tenant', $tenant->id, "Created tenant: {$tenant->business_name}", null, $tenant->toArray());
+        } catch (\Exception $e) {
+            \Log::warning('Failed to log audit', ['error' => $e->getMessage()]);
+        }
 
         return response()->json([
             'success' => true,
@@ -250,7 +261,11 @@ class TenantController extends Controller
             'overduePayments'
         ])->findOrFail($id);
 
-        AuditLog::log('view', 'Tenant', $tenant->id, "Viewed tenant: {$tenant->business_name}");
+        try {
+            AuditLog::log('view', 'Tenant', $tenant->id, "Viewed tenant: {$tenant->business_name}");
+        } catch (\Exception $e) {
+            \Log::warning('Failed to log audit', ['error' => $e->getMessage()]);
+        }
 
         // Add full URLs for profile picture if it exists
         $tenantArray = $tenant->toArray();
@@ -394,7 +409,11 @@ class TenantController extends Controller
         $oldValues = $tenant->toArray();
         $tenant->update($data);
 
-        AuditLog::log('update', 'Tenant', $tenant->id, "Updated tenant: {$tenant->business_name}", $oldValues, $tenant->toArray());
+        try {
+            AuditLog::log('update', 'Tenant', $tenant->id, "Updated tenant: {$tenant->business_name}", $oldValues, $tenant->toArray());
+        } catch (\Exception $e) {
+            \Log::warning('Failed to log audit', ['error' => $e->getMessage()]);
+        }
 
         return response()->json([
             'success' => true,
@@ -411,7 +430,11 @@ class TenantController extends Controller
         $tenant = Tenant::findOrFail($id);
         $tenantName = $tenant->business_name;
         
-        AuditLog::log('delete', 'Tenant', $tenant->id, "Deleted tenant: {$tenantName}");
+        try {
+            AuditLog::log('delete', 'Tenant', $tenant->id, "Deleted tenant: {$tenantName}");
+        } catch (\Exception $e) {
+            \Log::warning('Failed to log audit', ['error' => $e->getMessage()]);
+        }
         
         $tenant->user->delete(); // This will cascade delete the tenant
 
