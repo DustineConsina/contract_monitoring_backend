@@ -52,17 +52,24 @@ return Application::configure(basePath: dirname(__DIR__))
         // Catch all other exceptions for API requests
         $exceptions->renderable(function (\Throwable $e, $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
-                // Log the actual error for debugging
+                // Log the actual error with full details for debugging
                 \Log::error('API Error: ' . get_class($e), [
+                    'exception_class' => get_class($e),
                     'message' => $e->getMessage(),
                     'file' => $e->getFile(),
                     'line' => $e->getLine(),
                     'path' => $request->path(),
+                    'method' => $request->method(),
+                    'url' => $request->url(),
+                    'ip' => $request->ip(),
+                    'user_id' => optional($request->user())->id,
+                    'stack_trace' => $e->getTraceAsString(),
                 ]);
                 
                 return response()->json([
                     'message' => 'Internal server error.',
-                    'status' => 'error'
+                    'status' => 'error',
+                    'error' => $e->getMessage()
                 ], 500);
             }
             return null;
