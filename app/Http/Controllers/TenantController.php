@@ -251,15 +251,24 @@ class TenantController extends Controller
      */
     public function show($id)
     {
-        $tenant = Tenant::with([
-            'user',
-            'contracts' => function ($query) {
-                $query->with('rentalSpace')->orderBy('created_at', 'desc');
-            },
-            'payments',
-            'activeContracts',
-            'overduePayments'
-        ])->findOrFail($id);
+        try {
+            $tenant = Tenant::with([
+                'user',
+                'contracts' => function ($query) {
+                    $query->with('rentalSpace')->orderBy('created_at', 'desc');
+                },
+                'payments'
+            ])->findOrFail($id);
+        } catch (\Exception $e) {
+            \Log::error('Failed to load tenant details', [
+                'tenant_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant not found'
+            ], 404);
+        }
 
         try {
             AuditLog::log('view', 'Tenant', $tenant->id, "Viewed tenant: {$tenant->business_name}");
