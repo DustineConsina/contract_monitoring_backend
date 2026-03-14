@@ -363,49 +363,68 @@ class ContractController extends Controller
         \Log::info("=" . str_repeat("=", 50));
         \Log::info("UPDATE CONTRACT {$id}");
         \Log::info("=" . str_repeat("=", 50));
+        
+        $data = $request->all();
+        \Log::info("Raw request keys: " . implode(", ", array_keys($data)));
+        \Log::info("monthly_rent in request: " . ($data['monthly_rent'] ?? 'MISSING'));
+        \Log::info("monthlyRent in request: " . ($data['monthlyRent'] ?? 'MISSING'));
+        
         \Log::info("BEFORE: monthly_rental = {$contract->monthly_rental}");
 
-        // Map camelCase to snake_case (handle both frontend field name variations)
-        $data = $request->all();
-        
-        \Log::info("Request monthlyRent: " . ($data['monthlyRent'] ?? 'MISSING'));
+        // Map camelCase to snake_case - IMPORTANT: apiClient sends snake_case!
+        // So check for snake_case versions FIRST
         
         // Map tenant and rental space IDs
-        if (isset($data['tenantId'])) {
-            $data['tenant_id'] = $data['tenantId'];
-            unset($data['tenantId']);
-        }
-        
-        if (isset($data['rentalSpaceId'])) {
+        if (isset($data['rental_space_id']) && !isset($data['rentalSpaceId'])) {
+            // Already in snake_case, convert to our variable name
+            $data['rental_space_id'] = $data['rental_space_id'];
+        } elseif (isset($data['rentalSpaceId'])) {
             $data['rental_space_id'] = $data['rentalSpaceId'];
             unset($data['rentalSpaceId']);
         }
         
-        if (isset($data['startDate'])) {
+        // Handle dates
+        if (isset($data['start_date']) && !isset($data['startDate'])) {
+            // Already in snake_case
+        } elseif (isset($data['startDate'])) {
             $data['start_date'] = $data['startDate'];
             unset($data['startDate']);
         }
         
         if (isset($data['endDate'])) {
-            unset($data['endDate']); // Remove endDate, we calculate it
+            unset($data['endDate']); // Remove, we calculate it
         }
         
-        if (isset($data['durationMonths'])) {
+        if (isset($data['duration_months']) && !isset($data['durationMonths'])) {
+            // Already snake_case
+        } elseif (isset($data['durationMonths'])) {
             $data['duration_months'] = $data['durationMonths'];
             unset($data['durationMonths']);
         }
         
-        // Handle monthlyRent/monthlyRental variations - CRITICAL FIX
-        if (isset($data['monthlyRent'])) {
+        // Handle monthlyRent - CHECK SNAKE_CASE FIRST since apiClient converts to snake_case
+        if (isset($data['monthly_rent'])) {
+            $data['monthly_rental'] = floatval($data['monthly_rent']);
+            \Log::info("✅ Using monthly_rent from request: {$data['monthly_rental']}");
+        } elseif (isset($data['monthlyRent'])) {
             $data['monthly_rental'] = floatval($data['monthlyRent']);
-            unset($data['monthlyRent']);
-        } elseif (isset($data['monthlyRental'])) {
-            $data['monthly_rental'] = floatval($data['monthlyRental']);
-            unset($data['monthlyRental']);
+            \Log::info("✅ Using monthlyRent from request: {$data['monthly_rental']}");
+        } elseif (isset($data['monthly_rental'])) {
+            $data['monthly_rental'] = floatval($data['monthly_rental']);
+            \Log::info("✅ Using monthly_rental from request: {$data['monthly_rental']}");
+        } else {
+            \Log::warning("❌ No monthly_rent/monthlyRent/monthly_rental found in request!");
         }
         
-        // Handle securityDeposit/depositAmount variations
-        if (isset($data['securityDeposit'])) {
+        // Clean up monthly_rent and monthlyRent variants
+        unset($data['monthly_rent']);
+        unset($data['monthlyRent']);
+        unset($data['monthlyRental']);
+        
+        // Handle security deposit - CHECK SNAKE_CASE FIRST
+        if (isset($data['deposit_amount'])) {
+            // Already snake_case, keep it
+        } elseif (isset($data['securityDeposit'])) {
             $data['deposit_amount'] = $data['securityDeposit'];
             unset($data['securityDeposit']);
         } elseif (isset($data['depositAmount'])) {
@@ -413,13 +432,22 @@ class ContractController extends Controller
             unset($data['depositAmount']);
         }
         
-        if (isset($data['interestRate'])) {
+        unset($data['securityDeposit']);
+        unset($data['depositAmount']);
+        
+        if (isset($data['interest_rate'])) {
+            // OK, already snake_case
+        } elseif (isset($data['interestRate'])) {
             $data['interest_rate'] = $data['interestRate'];
             unset($data['interestRate']);
         }
         
-        // Handle terms/termsConditions variations
-        if (isset($data['terms'])) {
+        unset($data['interestRate']);
+        
+        // Handle terms - CHECK SNAKE_CASE FIRST
+        if (isset($data['terms_conditions'])) {
+            // Already snake_case
+        } elseif (isset($data['terms'])) {
             $data['terms_conditions'] = $data['terms'];
             unset($data['terms']);
         } elseif (isset($data['termsConditions'])) {
@@ -427,10 +455,15 @@ class ContractController extends Controller
             unset($data['termsConditions']);
         }
         
+        unset($data['terms']);
+        unset($data['termsConditions']);
+        
         if (isset($data['contractFile'])) {
             $data['contract_file'] = $data['contractFile'];
             unset($data['contractFile']);
         }
+        
+        unset($data['contract_file']);
 
         $validator = Validator::make($data, [
             'tenant_id' => 'sometimes|integer|exists:tenants,id',
@@ -442,10 +475,10 @@ class ContractController extends Controller
             'interest_rate' => 'sometimes|numeric|min:0|max:100',
             'terms_conditions' => 'sometimes|string',
             'status' => 'sometimes|in:active,expired,terminated,pending',
-            'contract_file' => 'nullable|file|mimes:pdf,doc,docx|max:51200',
         ]);
 
         if ($validator->fails()) {
+            \Log::warning("Validation failed: " . json_encode($validator->errors()));
             return response()->json([
                 'success' => false,
                 'errors' => $validator->errors()
@@ -460,6 +493,7 @@ class ContractController extends Controller
                 Storage::disk('public')->delete($contract->contract_file);
             }
             $contract->contract_file = $request->file('contract_file')->store('contracts', 'public');
+            $data['contract_file'] = $contract->contract_file;
         }
 
         // Recalculate end date if start date or duration changed
@@ -468,45 +502,46 @@ class ContractController extends Controller
             $duration = isset($data['duration_months']) ? $data['duration_months'] : $contract->duration_months;
             $data['end_date'] = $startDate->copy()->addMonths($duration)->subDay();
         }
+        
+        // Also add tenant_id if not present (apiClient converts rentalSpaceId to rental_space_id)
+        if (isset($data['tenant_id'])) {
+            // good
+        } elseif (isset($data['tenantId'])) {
+            $data['tenant_id'] = $data['tenantId'];
+        }
+        unset($data['tenantId']);
 
-        // Keep only valid database fields
-        $validFields = [
+        // Prepare update data - ONLY these fields are allowed in database
+        $updateData = [];
+        $allowedFields = [
             'tenant_id', 'rental_space_id', 'start_date', 'end_date', 'duration_months',
             'monthly_rental', 'deposit_amount', 'interest_rate', 'terms_conditions', 'contract_file', 'status'
         ];
         
-        $dbData = [];
-        foreach ($data as $key => $value) {
-            if (in_array($key, $validFields) && $value !== null) {
-                $dbData[$key] = $value;
+        foreach ($allowedFields as $field) {
+            if (isset($data[$field])) {
+                $updateData[$field] = $data[$field];
             }
         }
         
-        \Log::info("Fields to update: " . implode(", ", array_keys($dbData)));
-        if (isset($dbData['monthly_rental'])) {
-            \Log::info("monthly_rental value: {$dbData['monthly_rental']}");
-        }
+        \Log::info("ALL data keys after mapping: " . implode(", ", array_keys($data)));
+        \Log::info("UPDATE data to send to DB: " . implode(", ", array_keys($updateData)));
+        \Log::info("monthly_rental value: " . ($updateData['monthly_rental'] ?? 'NOT IN UPDATE DATA'));
         
         try {
-            // Use Eloquent update directly
-            $result = Contract::whereId($id)->update($dbData);
+            // Execute update
+            $result = Contract::whereId($id)->update($updateData);
             
-            \Log::info("Rows affected: {$result}");
+            \Log::info("UPDATE EXECUTED - Rows affected: {$result}");
             
-            // Immediate verification with error handling
-            try {
-                $check = \DB::selectOne("SELECT id, monthly_rental FROM contracts WHERE id = ?", [$id]);
-                if ($check) {
-                    \Log::info("VERIFICATION: monthly_rental in DB = " . $check->monthly_rental);
-                }
-            } catch (\Exception $e) {
-                \Log::error("Verification query failed: " . $e->getMessage());
-            }
+            // Verify immediately
+            $check = Contract::find($id);
+            \Log::info("VERIFICATION - monthly_rental in DB now: {$check->monthly_rental}");
             
             // Reload fresh contract from database
             $contract = Contract::with(['tenant.user', 'rentalSpace', 'payments'])->findOrFail($id);
             
-            \Log::info("AFTER: monthly_rental in response = {$contract->monthly_rental}");
+            \Log::info("RESPONSE - monthly_rental: {$contract->monthly_rental}");
             \Log::info("=" . str_repeat("=", 50));
             
             AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
@@ -517,11 +552,11 @@ class ContractController extends Controller
                 'data' => $contract
             ]);
         } catch (\Exception $e) {
-            \Log::error("Update error: " . $e->getMessage());
-            \Log::error("Stack: " . $e->getTraceAsString());
+            \Log::error("UPDATE ERROR: " . $e->getMessage());
+            \Log::error("Trace: " . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
-                'message' => 'Error updating contract: ' . $e->getMessage()
+                'message' => 'Error: ' . $e->getMessage()
             ], 500);
         }
     }
