@@ -51,6 +51,21 @@ Route::get('/storage/{path}', [TenantController::class, 'serveFile'])->where('pa
 Route::get('/contracts/{id}/view', [ContractController::class, 'viewQRContract']);
 Route::get('/contracts/{id}/lease', [ContractController::class, 'downloadLease']);
 
+// DEBUG: Direct database check (remove after debugging)
+Route::get('/debug/contract/{id}', function($id) {
+    $contract = \App\Models\Contract::find($id);
+    if (!$contract) {
+        return response()->json(['error' => 'Contract not found'], 404);
+    }
+    return response()->json([
+        'id' => $contract->id,
+        'contract_number' => $contract->contract_number,
+        'monthly_rental_in_db' => $contract->monthly_rental,
+        'rental_space_id' => $contract->rental_space_id,
+        'updated_at' => $contract->updated_at,
+    ]);
+});
+
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     // Auth routes

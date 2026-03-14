@@ -358,15 +358,15 @@ class ContractController extends Controller
      */
     public function update(Request $request, $id)
     {
-        \Log::info('📝 UPDATE REQUEST RECEIVED - ID: ' . $id);
-        \Log::info('   Raw request data:', $request->all());
-        
         $contract = Contract::findOrFail($id);
+        
+        \Log::info("UPDATE CONTRACT {$id}: Starting update process");
+        \Log::info("Raw request data keys: " . json_encode(array_keys($request->all())));
 
         // Map camelCase to snake_case (handle both frontend field name variations)
         $data = $request->all();
         
-        \Log::info('   Data BEFORE conversion:', ['keys' => array_keys($data), 'monthlyRent' => $data['monthlyRent'] ?? 'NOT SET', 'monthly_rental' => $data['monthly_rental'] ?? 'NOT SET']);
+        \Log::info("Data before conversion - monthlyRent: " . ($data['monthlyRent'] ?? 'MISSING'));
         
         // Map tenant and rental space IDs
         if (isset($data['tenantId'])) {
@@ -393,15 +393,17 @@ class ContractController extends Controller
             unset($data['durationMonths']);
         }
         
-        // Handle monthlyRent/monthlyRental variations
+        // Handle monthlyRent/monthlyRental variations - CRITICAL FIX
         if (isset($data['monthlyRent'])) {
-            $data['monthly_rental'] = $data['monthlyRent'];
+            $data['monthly_rental'] = floatval($data['monthlyRent']);
             unset($data['monthlyRent']);
-            \Log::info('   ✅ Converted monthlyRent to monthly_rental: ' . $data['monthly_rental']);
+            \Log::info("✅ Converted monthlyRent to monthly_rental: {$data['monthly_rental']}");
         } elseif (isset($data['monthlyRental'])) {
-            $data['monthly_rental'] = $data['monthlyRental'];
+            $data['monthly_rental'] = floatval($data['monthlyRental']);
             unset($data['monthlyRental']);
-            \Log::info('   ✅ Converted monthlyRental to monthly_rental: ' . $data['monthly_rental']);
+            \Log::info("✅ Converted monthlyRental to monthly_rental: {$data['monthly_rental']}");
+        } else {
+            \Log::warning("❌ No monthlyRent/monthlyRental found in request!");
         }
         
         // Handle securityDeposit/depositAmount variations
@@ -467,41 +469,48 @@ class ContractController extends Controller
         if (isset($data['start_date']) || isset($data['duration_months'])) {
             $startDate = isset($data['start_date']) ? Carbon::parse($data['start_date']) : $contract->start_date;
             $duration = isset($data['duration_months']) ? $data['duration_months'] : $contract->duration_months;
-            $contract->end_date = $startDate->copy()->addMonths($duration)->subDay();
+            $data['end_date'] = $startDate->copy()->addMonths($duration)->subDay();
         }
 
-        \Log::info('   Data AFTER conversion:', ['monthly_rental' => $data['monthly_rental'] ?? 'NOT SET']);
-
-        $contract->fill($data)->save();
+        // Keep only valid database fields
+        $validFields = [
+            'tenant_id', 'rental_space_id', 'start_date', 'end_date', 'duration_months',
+            'monthly_rental', 'deposit_amount', 'interest_rate', 'terms_conditions', 'contract_file', 'status'
+        ];
         
-        // Immediately check database
-        $freshContract = Contract::find($contract->id);
-        \Log::info('   ✅ SAVED TO DB! Fresh from DB:', [
-            'id' => $freshContract->id,
-            'monthly_rental' => $freshContract->monthly_rental,
-            'deposit_amount' => $freshContract->deposit_amount,
-        ]);
-
-        \Log::info('✅ CONTRACT UPDATED - New values:', [
-            'contract_id' => $contract->id,
-            'monthly_rental' => $contract->monthly_rental,
-            'deposit_amount' => $contract->deposit_amount,
-            'rental_space_id' => $contract->rental_space_id,
-        ]);
-
-        AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
-
-        // Refresh the contract from database to ensure we have latest values
-        $contract->refresh();
-
-        // Refresh the contract from database to ensure we have latest values
-        $contract->refresh();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Contract updated successfully',
-            'data' => $contract->load(['tenant.user', 'rentalSpace'])
-        ]);
+        $dbData = array_filter($data, function($key) use ($validFields) {
+            return in_array($key, $validFields);
+        }, ARRAY_FILTER_USE_KEY);
+        
+        \Log::info("Data to be updated in DB: " . json_encode(array_keys($dbData)));
+        \Log::info("monthly_rental in dbData: " . ($dbData['monthly_rental'] ?? 'MISSING'));
+        
+        // Update using query builder
+        $updateResult = Contract::where('id', $id)->update($dbData);
+        
+        \Log::info("Update result: {$updateResult} rows affected");
+        
+        // Verify the update immediately
+        $verifyContract = Contract::find($id);
+        \Log::info("After update - monthly_rental in DB: {$verifyContract->monthly_rental}");
+        
+        if ($updateResult) {
+            // Reload fresh contract from database
+            $contract = Contract::with(['tenant.user', 'rentalSpace', 'payments'])->findOrFail($id);
+            
+            AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Contract updated successfully',
+                'data' => $contract
+            ]);
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update contract'
+            ], 500);
+        }
     }
 
     /**
