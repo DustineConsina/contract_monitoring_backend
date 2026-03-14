@@ -483,32 +483,47 @@ class ContractController extends Controller
         }
         
         \Log::info("Fields to update: " . implode(", ", array_keys($dbData)));
-        \Log::info("monthly_rental value: {$dbData['monthly_rental']}");
-        
-        // Use Eloquent update directly
-        $result = Contract::whereId($id)->update($dbData);
-        
-        \Log::info("Rows affected: {$result}");
-        
-        // Immediate verification
-        $check = \DB::select("SELECT id, monthly_rental FROM contracts WHERE id = ?", [$id]);
-        if ($check) {
-            \Log::info("VERIFICATION: monthly_rental in DB = {$check[0]->monthly_rental}");
+        if (isset($dbData['monthly_rental'])) {
+            \Log::info("monthly_rental value: {$dbData['monthly_rental']}");
         }
         
-        // Reload fresh contract from database
-        $contract = Contract::with(['tenant.user', 'rentalSpace', 'payments'])->findOrFail($id);
-        
-        \Log::info("AFTER: monthly_rental in response = {$contract->monthly_rental}");
-        \Log::info("=" . str_repeat("=", 50));
-        
-        AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Contract updated successfully',
-            'data' => $contract
-        ]);
+        try {
+            // Use Eloquent update directly
+            $result = Contract::whereId($id)->update($dbData);
+            
+            \Log::info("Rows affected: {$result}");
+            
+            // Immediate verification with error handling
+            try {
+                $check = \DB::selectOne("SELECT id, monthly_rental FROM contracts WHERE id = ?", [$id]);
+                if ($check) {
+                    \Log::info("VERIFICATION: monthly_rental in DB = " . $check->monthly_rental);
+                }
+            } catch (\Exception $e) {
+                \Log::error("Verification query failed: " . $e->getMessage());
+            }
+            
+            // Reload fresh contract from database
+            $contract = Contract::with(['tenant.user', 'rentalSpace', 'payments'])->findOrFail($id);
+            
+            \Log::info("AFTER: monthly_rental in response = {$contract->monthly_rental}");
+            \Log::info("=" . str_repeat("=", 50));
+            
+            AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Contract updated successfully',
+                'data' => $contract
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Update error: " . $e->getMessage());
+            \Log::error("Stack: " . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating contract: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
