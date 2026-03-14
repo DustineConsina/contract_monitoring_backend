@@ -20,26 +20,52 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(\App\Http\Middleware\CorsMiddleware::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Handle AuthenticationException for API requests (return 401 instead of redirect)
-        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, $request) {
+        // Render JSON for API authentication failures
+        $exceptions->renderable(function (\Illuminate\Auth\AuthenticationException $e, $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'message' => 'Unauthenticated.',
                     'status' => 'error'
                 ], 401);
             }
+            return null;
         });
-        
-        // Handle RouteNotFoundException for missing login route
-        $exceptions->render(function (\Symfony\Component\Routing\Exception\RouteNotFoundException $e, $request) {
+
+        // Catch RouteNotFoundException when trying to access missing login route
+        $exceptions->renderable(function (\Symfony\Component\Routing\Exception\RouteNotFoundException $e, $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
-                // Return 401 if trying to redirect to login on API request
                 if (str_contains($e->getMessage(), 'login')) {
                     return response()->json([
                         'message' => 'Unauthenticated.',
                         'status' => 'error'
                     ], 401);
                 }
+                // Return generic error for other missing routes
+                return response()->json([
+                    'message' => 'Route not found.',
+                    'status' => 'error'
+                ], 404);
             }
+            return null;
+        });
+
+        // Catch all other exceptions for API requests
+        $exceptions->renderable(function (\Throwable $e, $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                // Log the actual error for debugging
+                \Log::error('API Error: ' . get_class($e), [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'path' => $request->path(),
+                ]);
+                
+                return response()->json([
+                    'message' => 'Internal server error.',
+                    'status' => 'error'
+                ], 500);
+            }
+            return null;
         });
     })->create();
+
