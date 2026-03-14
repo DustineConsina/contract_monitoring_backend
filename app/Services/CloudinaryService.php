@@ -109,11 +109,18 @@ class CloudinaryService
     public function generateUrl(string $public_id, int $width = 200, int $height = 200): string
     {
         try {
-            // Simple URL generation with transformations
-            $url = $this->cloudinary->image($public_id)
-                ->format('auto')
-                ->quality('auto')
-                ->toUrl();
+            // Get cloud name from configuration
+            $cloudName = $this->cloudinary->getConfiguration()->get('cloud.cloud_name');
+            
+            if (!$cloudName) {
+                \Log::warning('Cloud name not configured for Cloudinary');
+                return null;
+            }
+
+            // Build URL with transformations in correct format (comma-separated)
+            // Format: https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{public_id}
+            $transformations = "f_auto,q_auto,w_{$width},h_{$height},c_fill";
+            $url = "https://res.cloudinary.com/{$cloudName}/image/upload/{$transformations}/{$public_id}";
             
             return $url;
         } catch (\Exception $e) {
@@ -121,9 +128,8 @@ class CloudinaryService
                 'public_id' => $public_id,
                 'error' => $e->getMessage()
             ]);
-            // Return a basic Cloudinary URL if transformation builder fails
-            $cloudName = $this->cloudinary->getConfiguration()->get('cloud.cloud_name');
-            return "https://res.cloudinary.com/{$cloudName}/image/upload/q_auto,f_auto/{$public_id}";
+            // Return null if unable to generate URL
+            return null;
         }
     }
 }
