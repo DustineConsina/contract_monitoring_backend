@@ -128,10 +128,10 @@ class Contract extends Model
     }
 
     /**
-     * Create renewal notification for tenant.
+     * Create renewal notification for admin/staff/cashier.
      * 
      * This creates an IN-APP NOTIFICATION ONLY (no email is sent).
-     * Notification is stored in database and displayed on the notification page.
+     * Notification is created for all admin, staff, and cashier users.
      * 
      * @return bool True if notification created successfully, false otherwise
      */
@@ -150,43 +150,48 @@ class Contract extends Model
                 $this->load('tenant');
             }
 
-            // Create notification for tenant user
-            if (!$this->tenant || !$this->tenant->user) {
-                \Log::warning('Contract renewal notification failed - no tenant or user', [
-                    'contract_id' => $this->id,
-                    'contract_number' => $this->contract_number,
-                    'tenant_id' => $this->tenant_id,
-                    'has_tenant' => (bool) $this->tenant,
-                    'has_user' => $this->tenant ? (bool) $this->tenant->user : false,
-                ]);
-                return false;
-            }
-
-            // Load rental space to avoid null issue
             if (!$this->rentalSpace) {
                 $this->load('rentalSpace');
             }
 
-            Notification::create([
-                'user_id' => $this->tenant->user_id,
-                'type' => 'contract_renewal',
-                'title' => 'Contract Renewal Notice',
-                'message' => "Your lease contract #{$this->contract_number} for {$this->rentalSpace->name} will expire in {$daysUntilExpiry} days ({$this->end_date->format('M d, Y')}). Please contact management to discuss renewal options.",
-                'data' => [
-                    'contract_id' => (int) $this->id,
-                    'contract_number' => (string) $this->contract_number,
-                    'rental_space' => (string) $this->rentalSpace->name,
-                    'expiry_date' => $this->end_date->format('Y-m-d'),
-                    'days_until_expiry' => (int) $daysUntilExpiry,
-                ],
-                'is_read' => false,
-                'email_sent' => false, // In-app notification only, NOT sent via email
-            ]);
+            // Get all admin, staff, and cashier users
+            $adminUsers = User::whereIn('role', ['admin', 'staff', 'cashier'])->get();
+
+            if ($adminUsers->isEmpty()) {
+                \Log::warning('Contract renewal notification failed - no admin users found', [
+                    'contract_id' => $this->id,
+                    'contract_number' => $this->contract_number,
+                ]);
+                return false;
+            }
+
+            // Create notification for each admin user
+            foreach ($adminUsers as $user) {
+                $tenantName = $this->tenant->business_name ?? 'N/A';
+                
+                Notification::create([
+                    'user_id' => $user->id,
+                    'type' => 'contract_renewal',
+                    'title' => 'Contract Renewal Notice',
+                    'message' => "Contract #{$this->contract_number} for {$this->rentalSpace->name} (Tenant: {$tenantName}) will expire in {$daysUntilExpiry} days ({$this->end_date->format('M d, Y')}). Please contact tenant to discuss renewal options.",
+                    'data' => [
+                        'contract_id' => (int) $this->id,
+                        'contract_number' => (string) $this->contract_number,
+                        'rental_space' => (string) $this->rentalSpace->name,
+                        'tenant_name' => (string) $tenantName,
+                        'tenant_id' => (int) $this->tenant_id,
+                        'expiry_date' => $this->end_date->format('Y-m-d'),
+                        'days_until_expiry' => (int) $daysUntilExpiry,
+                    ],
+                    'is_read' => false,
+                    'email_sent' => false, // In-app notification only, NOT sent via email
+                ]);
+            }
 
             // Update last notification sent timestamp
             $this->update(['last_notification_sent' => Carbon::now()]);
             
-            \Log::info('Contract renewal notification created', [
+            \Log::info('Contract renewal notification created for admin users', [
                 'contract_id' => $this->id,
                 'contract_number' => $this->contract_number,
                 'tenant_id' => $this->tenant_id,

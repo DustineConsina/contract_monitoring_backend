@@ -53,11 +53,12 @@ class SendContractRenewalNotifications extends Command
                         $this->line("  ✓ Notification sent for contract #{$contract->contract_number}");
                     } else {
                         $notificationsFailed++;
-                        $this->line("  ✗ Failed to send notification for contract #{$contract->contract_number}");
+                        $this->line("  ✗ Failed to send notification for contract #{$contract->contract_number} (returned false)");
                     }
                 } catch (\Exception $e) {
                     $notificationsFailed++;
                     $this->error("  ✗ Exception for contract #{$contract->contract_number}: {$e->getMessage()}");
+                    $this->error("     File: {$e->getFile()}:{$e->getLine()}");
                 }
             }
 
