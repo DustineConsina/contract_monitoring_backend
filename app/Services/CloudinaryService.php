@@ -3,17 +3,15 @@
 namespace App\Services;
 
 use Cloudinary\Cloudinary;
-use Cloudinary\Api\Upload\UploadApi;
 use Illuminate\Http\UploadedFile;
 
 class CloudinaryService
 {
     private $cloudinary;
-    private $uploadApi;
 
     public function __construct()
     {
-        // Parse CLOUDINARY_URL if set, otherwise use individual env vars
+        // Parse CLOUDINARY_URL if set
         $cloudinaryUrl = env('CLOUDINARY_URL');
         
         if ($cloudinaryUrl) {
@@ -29,8 +27,6 @@ class CloudinaryService
                 ]
             ]);
         }
-
-        $this->uploadApi = new UploadApi($this->cloudinary);
     }
 
     /**
@@ -55,7 +51,7 @@ class CloudinaryService
                 $options['public_id'] = $public_id;
             }
 
-            $result = $this->uploadApi->upload(
+            $result = $this->cloudinary->uploadApi()->upload(
                 $file->getRealPath(),
                 $options
             );
@@ -94,7 +90,7 @@ class CloudinaryService
     public function deleteFile(string $public_id): bool
     {
         try {
-            $this->uploadApi->destroy($public_id);
+            $this->cloudinary->uploadApi()->destroy($public_id);
             return true;
         } catch (\Exception $e) {
             \Log::error('Cloudinary delete error: ' . $e->getMessage());
@@ -112,13 +108,22 @@ class CloudinaryService
      */
     public function generateUrl(string $public_id, int $width = 200, int $height = 200): string
     {
-        return $this->cloudinary->image($public_id)
-            ->resize()
-            ->width($width)
-            ->height($height)
-            ->crop('fill')
-            ->quality('auto')
-            ->format('auto')
-            ->toUrl();
+        try {
+            // Simple URL generation with transformations
+            $url = $this->cloudinary->image($public_id)
+                ->format('auto')
+                ->quality('auto')
+                ->toUrl();
+            
+            return $url;
+        } catch (\Exception $e) {
+            \Log::warning('Failed to generate Cloudinary URL', [
+                'public_id' => $public_id,
+                'error' => $e->getMessage()
+            ]);
+            // Return a basic Cloudinary URL if transformation builder fails
+            $cloudName = $this->cloudinary->getConfiguration()->get('cloud.cloud_name');
+            return "https://res.cloudinary.com/{$cloudName}/image/upload/q_auto,f_auto/{$public_id}";
+        }
     }
 }
