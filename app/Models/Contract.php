@@ -140,24 +140,43 @@ class Contract extends Model
                 return false;
             }
 
-            // Create notification for tenant user
-            if ($this->tenant && $this->tenant->user) {
-                Notification::create([
-                    'user_id' => $this->tenant->user_id,
-                    'type' => 'contract_renewal',
-                    'title' => 'Contract Renewal Notice',
-                    'message' => "Your lease contract #{$this->contract_number} for {$this->rentalSpace->name} will expire in {$daysUntilExpiry} days ({$this->end_date->format('M d, Y')}). Please contact management to discuss renewal options.",
-                    'data' => [
-                        'contract_id' => $this->id,
-                        'contract_number' => $this->contract_number,
-                        'rental_space' => $this->rentalSpace->name,
-                        'expiry_date' => $this->end_date->format('Y-m-d'),
-                        'days_until_expiry' => $daysUntilExpiry,
-                    ],
-                    'is_read' => false,
-                    'email_sent' => false,
-                ]);
+            // Ensure relationships are loaded
+            if (!$this->tenant) {
+                $this->load('tenant');
             }
+
+            // Create notification for tenant user
+            if (!$this->tenant || !$this->tenant->user) {
+                \Log::warning('Contract renewal notification failed - no tenant or user', [
+                    'contract_id' => $this->id,
+                    'contract_number' => $this->contract_number,
+                    'tenant_id' => $this->tenant_id,
+                    'has_tenant' => (bool) $this->tenant,
+                    'has_user' => $this->tenant ? (bool) $this->tenant->user : false,
+                ]);
+                return false;
+            }
+
+            // Load rental space to avoid null issue
+            if (!$this->rentalSpace) {
+                $this->load('rentalSpace');
+            }
+
+            Notification::create([
+                'user_id' => $this->tenant->user_id,
+                'type' => 'contract_renewal',
+                'title' => 'Contract Renewal Notice',
+                'message' => "Your lease contract #{$this->contract_number} for {$this->rentalSpace->name} will expire in {$daysUntilExpiry} days ({$this->end_date->format('M d, Y')}). Please contact management to discuss renewal options.",
+                'data' => [
+                    'contract_id' => (int) $this->id,
+                    'contract_number' => (string) $this->contract_number,
+                    'rental_space' => (string) $this->rentalSpace->name,
+                    'expiry_date' => $this->end_date->format('Y-m-d'),
+                    'days_until_expiry' => (int) $daysUntilExpiry,
+                ],
+                'is_read' => false,
+                'email_sent' => false,
+            ]);
 
             // Update last notification sent timestamp
             $this->update(['last_notification_sent' => Carbon::now()]);
@@ -172,7 +191,14 @@ class Contract extends Model
         } catch (\Exception $e) {
             \Log::error('Failed to create renewal notification', [
                 'contract_id' => $this->id,
+                'contract_number' => $this->contract_number,
                 'error' => $e->getMessage(),
+                'error_code' => $e->getCode(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'tenant_id' => $this->tenant_id,
+                'has_tenant' => (bool) $this->tenant,
+                'has_user' => $this->tenant ? (bool) $this->tenant->user : false,
             ]);
             return false;
         }

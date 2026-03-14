@@ -36,6 +36,7 @@ class SendContractRenewalNotifications extends Command
             
             $contracts = Contract::where('status', 'active')
                 ->whereBetween('end_date', [Carbon::now(), $expiryDate])
+                ->with(['tenant', 'tenant.user', 'rentalSpace'])
                 ->get();
 
             $this->info("Found {$contracts->count()} contracts for renewal.");
@@ -46,12 +47,17 @@ class SendContractRenewalNotifications extends Command
             foreach ($contracts as $contract) {
                 $this->line("Processing: {$contract->contract_number}");
 
-                if ($contract->createRenewalNotification()) {
-                    $notificationsSent++;
-                    $this->line("  ✓ Notification sent for contract #{$contract->contract_number}");
-                } else {
+                try {
+                    if ($contract->createRenewalNotification()) {
+                        $notificationsSent++;
+                        $this->line("  ✓ Notification sent for contract #{$contract->contract_number}");
+                    } else {
+                        $notificationsFailed++;
+                        $this->line("  ✗ Failed to send notification for contract #{$contract->contract_number}");
+                    }
+                } catch (\Exception $e) {
                     $notificationsFailed++;
-                    $this->line("  ✗ Failed to send notification for contract #{$contract->contract_number}");
+                    $this->error("  ✗ Exception for contract #{$contract->contract_number}: {$e->getMessage()}");
                 }
             }
 
