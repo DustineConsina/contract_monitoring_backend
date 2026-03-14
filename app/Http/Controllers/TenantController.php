@@ -51,10 +51,10 @@ class TenantController extends Controller
         $tenants->getCollection()->transform(function ($tenant) {
             $tenantArray = $tenant->toArray();
             if ($tenant->profile_picture) {
-                // Force HTTPS URLs for production
-                $baseUrl = 'https://contractmonitoringbackend-production.up.railway.app/api';
-                $tenantArray['profile_picture_url'] = $baseUrl . '/storage/' . $tenant->profile_picture;
-                $tenantArray['profilePicture'] = $baseUrl . '/storage/' . $tenant->profile_picture;
+                // Use Storage disk URL or construct from APP_URL
+                $appUrl = rtrim(env('APP_URL', 'http://localhost'), '/');
+                $tenantArray['profile_picture_url'] = $appUrl . '/storage/' . $tenant->profile_picture;
+                $tenantArray['profilePicture'] = $appUrl . '/storage/' . $tenant->profile_picture;
             }
             return $tenantArray;
         });
@@ -239,10 +239,10 @@ class TenantController extends Controller
         // Add full URLs for profile picture if it exists
         $tenantArray = $tenant->toArray();
         if ($tenant->profile_picture) {
-            // Force HTTPS URLs for production
-            $baseUrl = 'https://contractmonitoringbackend-production.up.railway.app/api';
-            $tenantArray['profile_picture_url'] = $baseUrl . '/storage/' . $tenant->profile_picture;
-            $tenantArray['profilePicture_url'] = $baseUrl . '/storage/' . $tenant->profile_picture;
+            // Use APP_URL to construct correct storage URL
+            $appUrl = rtrim(env('APP_URL', 'http://localhost'), '/');
+            $tenantArray['profile_picture_url'] = $appUrl . '/storage/' . $tenant->profile_picture;
+            $tenantArray['profilePicture_url'] = $appUrl . '/storage/' . $tenant->profile_picture;
         }
 
         return response()->json([
@@ -574,8 +574,9 @@ class TenantController extends Controller
                 'file_exists' => $exists
             ]);
 
-            // Build API storage endpoint URL with cache buster
-            $apiStorageUrl = url('/api/storage/' . $path . '?t=' . time());
+            // Build storage endpoint URL using APP_URL
+            $appUrl = rtrim(env('APP_URL', 'http://localhost'), '/');
+            $fileUrl = $appUrl . '/storage/' . $path . '?t=' . time();
 
             return response()->json([
                 'success' => true,
@@ -583,7 +584,7 @@ class TenantController extends Controller
                 'data' => [
                     'profilePicture' => $path,
                     'profile_picture' => $path,
-                    'url' => $apiStorageUrl
+                    'url' => $fileUrl
                 ]
             ]);
         } catch (\Exception $e) {
