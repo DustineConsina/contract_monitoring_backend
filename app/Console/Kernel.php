@@ -12,6 +12,11 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        // Update contract statuses daily at 6 AM
+        $schedule->command('contracts:update-expired')
+                 ->dailyAt('06:00')
+                 ->description('Update contract statuses (mark as for_renewal or expired)');
+
         // Run demand letter generation daily at 8 AM
         $schedule->command('payments:generate-demand-letters')
                  ->dailyAt('08:00')
