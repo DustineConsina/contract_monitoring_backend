@@ -11,19 +11,37 @@ class CloudinaryService
 
     public function __construct()
     {
-        // Parse CLOUDINARY_URL if set
-        $cloudinaryUrl = env('CLOUDINARY_URL');
-        
-        if ($cloudinaryUrl) {
-            // Parse cloudinary://key:secret@cloudname format
-            $this->cloudinary = new Cloudinary($cloudinaryUrl);
-        } else {
-            // Fallback to individual env variables
+        try {
+            // Parse CLOUDINARY_URL if set
+            $cloudinaryUrl = env('CLOUDINARY_URL');
+            
+            if ($cloudinaryUrl) {
+                // Parse cloudinary://key:secret@cloudname format
+                $this->cloudinary = new Cloudinary($cloudinaryUrl);
+            } else {
+                // Fallback to individual env variables
+                $this->cloudinary = new Cloudinary([
+                    'cloud' => [
+                        'cloud_name' => env('CLOUDINARY_CLOUD_NAME', ''),
+                        'api_key' => env('CLOUDINARY_API_KEY', ''),
+                        'api_secret' => env('CLOUDINARY_API_SECRET', ''),
+                    ]
+                ]);
+            }
+            
+            \Log::info('CloudinaryService initialized successfully');
+        } catch (\Exception $e) {
+            \Log::error('Failed to initialize CloudinaryService', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // Still create a Cloudinary instance even if initialization fails
+            // This prevents the entire app from crashing
             $this->cloudinary = new Cloudinary([
                 'cloud' => [
-                    'cloud_name' => env('CLOUDINARY_CLOUD_NAME', ''),
-                    'api_key' => env('CLOUDINARY_API_KEY', ''),
-                    'api_secret' => env('CLOUDINARY_API_SECRET', ''),
+                    'cloud_name' => '',
+                    'api_key' => '',
+                    'api_secret' => '',
                 ]
             ]);
         }
@@ -104,9 +122,9 @@ class CloudinaryService
      * @param string $public_id
      * @param int $width
      * @param int $height
-     * @return string
+     * @return string|null
      */
-    public function generateUrl(string $public_id, int $width = 200, int $height = 200): string
+    public function generateUrl(string $public_id, int $width = 200, int $height = 200): ?string
     {
         try {
             // Get cloud name from configuration
