@@ -8,6 +8,7 @@ use Illuminate\Http\UploadedFile;
 class CloudinaryService
 {
     private $cloudinary;
+    private $cloudName;
 
     public function __construct()
     {
@@ -18,15 +19,18 @@ class CloudinaryService
             if ($cloudinaryUrl) {
                 // Parse cloudinary://key:secret@cloudname format
                 $this->cloudinary = new Cloudinary($cloudinaryUrl);
+                // Extract cloud name from URL
+                preg_match('/cloudinary:\/\/[^:]+:[^@]+@([^\/]+)/', $cloudinaryUrl, $matches);
+                $this->cloudName = $matches[1] ?? env('CLOUDINARY_CLOUD_NAME', '');
             } else {
                 // Fallback to individual env variables
-                $cloudName = env('CLOUDINARY_CLOUD_NAME', '');
+                $this->cloudName = env('CLOUDINARY_CLOUD_NAME', '');
                 $apiKey = env('CLOUDINARY_API_KEY', '');
                 $apiSecret = env('CLOUDINARY_API_SECRET', '');
                 
-                if (!$cloudName || !$apiKey || !$apiSecret) {
+                if (!$this->cloudName || !$apiKey || !$apiSecret) {
                     \Log::warning('Cloudinary credentials not fully configured', [
-                        'has_cloud_name' => (bool)$cloudName,
+                        'has_cloud_name' => (bool)$this->cloudName,
                         'has_api_key' => (bool)$apiKey,
                         'has_api_secret' => (bool)$apiSecret,
                     ]);
@@ -34,14 +38,16 @@ class CloudinaryService
                 
                 $this->cloudinary = new Cloudinary([
                     'cloud' => [
-                        'cloud_name' => $cloudName,
+                        'cloud_name' => $this->cloudName,
                         'api_key' => $apiKey,
                         'api_secret' => $apiSecret,
                     ]
                 ]);
             }
             
-            \Log::info('CloudinaryService initialized successfully');
+            \Log::info('CloudinaryService initialized successfully', [
+                'cloud_name' => $this->cloudName
+            ]);
         } catch (\Exception $e) {
             \Log::error('Failed to initialize CloudinaryService', [
                 'error' => $e->getMessage(),
@@ -56,6 +62,7 @@ class CloudinaryService
                     'api_secret' => '',
                 ]
             ]);
+            $this->cloudName = '';
         }
     }
 
@@ -139,10 +146,7 @@ class CloudinaryService
     public function generateUrl(string $public_id, int $width = 200, int $height = 200): ?string
     {
         try {
-            // Get cloud name from configuration
-            $cloudName = $this->cloudinary->getConfiguration()->get('cloud.cloud_name');
-            
-            if (!$cloudName) {
+            if (!$this->cloudName) {
                 \Log::warning('Cloud name not configured for Cloudinary');
                 return null;
             }
@@ -150,7 +154,7 @@ class CloudinaryService
             // Build URL with transformations in correct format (comma-separated)
             // Format: https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{public_id}
             $transformations = "f_auto,q_auto,w_{$width},h_{$height},c_fill";
-            $url = "https://res.cloudinary.com/{$cloudName}/image/upload/{$transformations}/{$public_id}";
+            $url = "https://res.cloudinary.com/{$this->cloudName}/image/upload/{$transformations}/{$public_id}";
             
             return $url;
         } catch (\Exception $e) {
