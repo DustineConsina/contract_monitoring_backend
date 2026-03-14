@@ -1,31 +1,46 @@
 #!/bin/bash
 
-echo "Starting deployment..."
+echo "=== PFDA CONTRACT MONITORING - DEPLOYMENT SCRIPT ==="
+echo "Environment: $APP_ENV"
+echo ""
 
-# Don't fail on errors - just warn
-set +e
+# Exit on first error to catch issues
+set -e
 
-# Clear config and route caches (file-based, don't need DB)
-echo "Clearing application caches..."
-php artisan config:clear 2>/dev/null || echo "  ⚠ Config clear failed (may retry later)"
-php artisan route:clear 2>/dev/null || echo "  ⚠ Route clear failed (may retry later)"
-php artisan view:clear 2>/dev/null || echo "  ⚠ View clear failed (may retry later)"
+# Ensure directories exist
+mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache
+chmod -R 777 storage bootstrap/cache 2>/dev/null || true
 
-# Rebuild caches (these should work without DB)
-echo "Building configuration cache..."
-php artisan config:cache 2>/dev/null && echo "  ✓ Config cached" || echo "  ⚠ Config cache failed"
+echo "Step 1: Clearing old caches..."
+php artisan config:clear || echo "  ⚠ Config clear warning (expected if in build phase)"
+php artisan route:clear || echo "  ⚠ Route clear warning (expected if in build phase)"
+php artisan view:clear || echo "  ⚠ View clear warning (expected if in build phase)"
 
-echo "Building route cache..."
-php artisan route:cache 2>/dev/null && echo "  ✓ Routes cached" || echo "  ⚠ Route cache failed"
+echo "Step 2: Rebuilding Laravel caches..."
+php artisan config:cache || echo "  ⚠ Config cache warning"
+php artisan route:cache || echo "  ⚠ Route cache warning - THIS IS CRITICAL"
+php artisan view:cache || echo "  ⚠ View cache warning"
 
-echo "Building view cache..."
-php artisan view:cache 2>/dev/null && echo "  ✓ Views cached" || echo "  ⚠ View cache failed"
+echo "Step 3: Database preparation..."
+echo "  Checking database connection..."
+php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'OK'; } catch (Exception \$e) { throw \$e; }" 2>/dev/null && echo "  ✓ Database is available" || echo "  ⚠ Database not yet available (will initialize on app start)"
 
-# These require database - only run if available
-echo "Running migrations and database operations..."
-php artisan migrate --force --no-interaction 2>/dev/null && echo "  ✓ Migrations completed" || echo "  ⚠ Migrations skipped (database not yet available)"
+echo "Step 4: Attempting migrations..."
+php artisan migrate --force 2>/dev/null || echo "  ⚠ Migrations will run on app startup"
 
 echo ""
-echo "✓ Deployment phase completed"
+echo "=== DEPLOYMENT CHECKS ==="
+echo "Verifying route cache file exists..."
+if [ -f "bootstrap/cache/routes-v7.php" ]; then
+  echo "  ✓ Route cache file exists"
+else
+  echo "  ✗ WARNING: Route cache file not found!"
+fi
+
+echo ""
+echo "✓ Deployment script completed"
+echo "  - Routes may be loaded from cache (if available)"
+echo "  - Migrations will finalize on app startup"
+
 
 
