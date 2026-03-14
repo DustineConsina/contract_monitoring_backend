@@ -20,21 +20,38 @@ class UpdateExpiredContracts extends Command
      *
      * @var string
      */
-    protected $description = 'Update status of expired contracts';
+    protected $description = 'Update status of contracts - mark as for_renewal (2 months before expiry) or expired';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $this->info('Updating expired contracts...');
+        $this->info('Updating contract statuses...');
 
-        // Get active contracts that have passed their end date
+        // 1. Get active contracts that are 2 months before expiry and mark as "for_renewal"
+        $twoMonthsFromNow = Carbon::now()->addMonths(2);
+        $forRenewalContracts = Contract::where('status', 'active')
+            ->where('end_date', '<=', $twoMonthsFromNow)
+            ->where('end_date', '>', Carbon::now())
+            ->get();
+
+        $renewalCount = 0;
+        foreach ($forRenewalContracts as $contract) {
+            if ($contract->status !== 'for_renewal') {
+                $contract->status = 'for_renewal';
+                $contract->save();
+                $this->info("Contract {$contract->contract_number} marked as for_renewal (expires in {$contract->daysUntilExpiration()} days)");
+                $renewalCount++;
+            }
+        }
+
+        // 2. Get contracts that have passed their end date and mark as "expired"
         $expiredContracts = Contract::where('status', 'active')
             ->where('end_date', '<', Carbon::now())
             ->get();
 
-        $count = 0;
+        $expiredCount = 0;
         foreach ($expiredContracts as $contract) {
             $contract->status = 'expired';
             $contract->save();
@@ -44,11 +61,31 @@ class UpdateExpiredContracts extends Command
             $rentalSpace->status = 'available';
             $rentalSpace->save();
 
-            $count++;
+            $this->info("Contract {$contract->contract_number} marked as expired");
+            $expiredCount++;
         }
 
-        $this->info("Updated {$count} expired contracts");
-        $this->info('Expired contracts update completed!');
+        // 3. Also check "for_renewal" contracts that have now passed expiry and update to expired
+        $forRenewalExpired = Contract::where('status', 'for_renewal')
+            ->where('end_date', '<', Carbon::now())
+            ->get();
+
+        foreach ($forRenewalExpired as $contract) {
+            $contract->status = 'expired';
+            $contract->save();
+
+            // Update rental space status to available
+            $rentalSpace = $contract->rentalSpace;
+            $rentalSpace->status = 'available';
+            $rentalSpace->save();
+
+            $this->info("Renewal contract {$contract->contract_number} marked as expired");
+            $expiredCount++;
+        }
+
+        $this->info("Updated {$renewalCount} contract(s) to 'for_renewal' status");
+        $this->info("Updated {$expiredCount} contract(s) to 'expired' status");
+        $this->info('Contract status update completed!');
 
         return Command::SUCCESS;
     }

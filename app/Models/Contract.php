@@ -101,11 +101,30 @@ class Contract extends Model
     }
 
     /**
+     * Check if contract is for renewal (2 months before expiry).
+     */
+    public function isForRenewal()
+    {
+        return $this->status === 'for_renewal';
+    }
+
+    /**
      * Check if contract is expiring soon (within 30 days).
      */
     public function isExpiringSoon()
     {
         return $this->end_date->diffInDays(Carbon::now()) <= 30 && $this->end_date->isFuture();
+    }
+
+    /**
+     * Check if contract needs renewal (2 months before expiry).
+     */
+    public function needsRenewal()
+    {
+        $twoMonthsFromNow = Carbon::now()->addMonths(2);
+        return $this->status === 'active' && 
+               $this->end_date->lte($twoMonthsFromNow) && 
+               $this->end_date->gt(Carbon::now());
     }
 
     /**
