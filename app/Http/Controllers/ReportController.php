@@ -237,6 +237,7 @@ class ReportController extends Controller
             'occupiedSpaces' => $occupiedSpacesCount,
             'totalContracts' => Contract::count(),
             'activeContracts' => Contract::where('status', 'active')->count(),
+            'renewalContracts' => Contract::where('status', 'for_renewal')->count(),
             'expiringContracts' => Contract::where('status', 'active')
                 ->where('end_date', '<=', Carbon::now()->addDays(30))
                 ->count(),
@@ -270,8 +271,17 @@ class ReportController extends Controller
                 ];
             });
 
-        // Recent contracts
-        $recentContracts = Contract::with(['tenant.user', 'rentalSpace'])
+        // Expiring contracts
+        $expiringContracts = Contract::with(['tenant.user', 'rentalSpace'])
+            ->where('status', 'active')
+            ->where('end_date', '<=', Carbon::now()->addDays(30))
+            ->latest()
+            ->take(5)
+            ->get();
+
+        // Contracts for renewal
+        $renewalContractsList = Contract::with(['tenant.user', 'rentalSpace'])
+            ->where('status', 'for_renewal')
             ->latest()
             ->take(5)
             ->get();
@@ -280,7 +290,9 @@ class ReportController extends Controller
             'success' => true,
             'data' => array_merge($stats, [
                 'recentPayments' => $recentPayments,
-                'recentContracts' => $recentContracts,
+                'recentContracts' => $expiringContracts,
+                'expiringContracts' => $expiringContracts,
+                'renewalContractsList' => $renewalContractsList,
             ])
         ]);
     }
