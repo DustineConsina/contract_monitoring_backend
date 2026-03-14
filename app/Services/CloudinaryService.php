@@ -13,13 +13,9 @@ class CloudinaryService
 
     public function __construct()
     {
-        $this->cloudinary = new Cloudinary([
-            'cloud' => [
-                'cloud_name' => env('CLOUDINARY_CLOUD_NAME'),
-                'api_key' => env('CLOUDINARY_API_KEY'),
-                'api_secret' => env('CLOUDINARY_API_SECRET'),
-            ]
-        ]);
+        // Cloudinary SDK automatically reads CLOUDINARY_URL environment variable
+        // Format: cloudinary://api_key:api_secret@cloud_name
+        $this->cloudinary = new Cloudinary();
 
         $this->uploadApi = new UploadApi($this->cloudinary);
     }
