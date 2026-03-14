@@ -463,7 +463,20 @@ class ContractController extends Controller
             $contract->end_date = $startDate->copy()->addMonths($duration)->subDay();
         }
 
+        \Log::info('📤 UPDATE CONTRACT - Data being saved:', [
+            'contract_id' => $contract->id,
+            'monthly_rental_in_data' => $data['monthly_rental'] ?? 'NOT SET',
+            'all_data' => $data
+        ]);
+
         $contract->fill($data)->save();
+
+        \Log::info('✅ CONTRACT UPDATED - New values:', [
+            'contract_id' => $contract->id,
+            'monthly_rental' => $contract->monthly_rental,
+            'deposit_amount' => $contract->deposit_amount,
+            'rental_space_id' => $contract->rental_space_id,
+        ]);
 
         AuditLog::log('update', 'Contract', $contract->id, "Updated contract: {$contract->contract_number}", $oldValues, $contract->toArray());
 
