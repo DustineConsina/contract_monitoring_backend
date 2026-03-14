@@ -20,7 +20,7 @@ class SendContractRenewalNotifications extends Command
      *
      * @var string
      */
-    protected $description = 'Send renewal notifications for contracts expiring soon';
+    protected $description = 'Send renewal notifications for contracts expiring soon (in-app only, no emails)';
 
     /**
      * Execute the console command.

@@ -129,6 +129,11 @@ class Contract extends Model
 
     /**
      * Create renewal notification for tenant.
+     * 
+     * This creates an IN-APP NOTIFICATION ONLY (no email is sent).
+     * Notification is stored in database and displayed on the notification page.
+     * 
+     * @return bool True if notification created successfully, false otherwise
      */
     public function createRenewalNotification()
     {
@@ -175,7 +180,7 @@ class Contract extends Model
                     'days_until_expiry' => (int) $daysUntilExpiry,
                 ],
                 'is_read' => false,
-                'email_sent' => false,
+                'email_sent' => false, // In-app notification only, NOT sent via email
             ]);
 
             // Update last notification sent timestamp
