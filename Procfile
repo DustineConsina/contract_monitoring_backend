@@ -1,2 +1,2 @@
-release: php artisan migrate --force || true
+release: bash deploy.sh
 web: bash start.sh
