@@ -61,7 +61,7 @@ class RentalSpaceController extends Controller
         $sortOrder = $request->get('sort_order', 'asc');
         $query->orderBy($sortBy, $sortOrder);
 
-        $spaces = $query->paginate($request->get('per_page', 15));
+        $spaces = $query->paginate($request->get('per_page', 1000));
         
         // Map the response to include computed occupancy status
         $spaces->getCollection()->transform(function ($space) {
