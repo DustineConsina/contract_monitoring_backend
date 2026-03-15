@@ -242,26 +242,40 @@ class RentalSpaceController extends Controller
     }
 
     /**
-     * Get available rental spaces
+     * Get available rental spaces (without active contracts)
+     * 
+     * This endpoint returns only rental spaces that are NOT currently occupied.
+     * A rental space is considered occupied if it has a contract with status='active'.
+     * 
+     * @return \Illuminate\Http\JsonResponse
      */
     public function getAvailableSpaces(Request $request)
     {
-        // Get spaces without active contracts
-        $query = RentalSpace::where('status', 'available')
-            ->whereDoesntHave('contracts', function ($q) {
-                $q->where('status', 'active');
-            });
+        try {
+            // Use the 'available' scope from RentalSpace model
+            $query = RentalSpace::available()->with('contracts');
 
-        if ($request->has('space_type')) {
-            $query->where('space_type', $request->space_type);
+            // Optional: filter by space type
+            if ($request->has('space_type')) {
+                $query->where('space_type', $request->space_type);
+            }
+
+            // Paginate or get all
+            $perPage = (int)$request->get('per_page', 1000);
+            $spaces = $query->orderBy('space_code')->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data' => $spaces
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching available spaces: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch available spaces',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $spaces = $query->orderBy('space_code')->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $spaces
-        ]);
     }
 
     /**

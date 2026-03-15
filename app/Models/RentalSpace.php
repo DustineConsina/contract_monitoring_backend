@@ -61,7 +61,27 @@ class RentalSpace extends Model
      */
     public function isAvailable()
     {
-        return $this->status === 'available';
+        return !$this->activeContract()->exists();
+    }
+
+    /**
+     * Scope: Only available rental spaces (without active contracts)
+     */
+    public function scopeAvailable($query)
+    {
+        return $query->whereDoesntHave('contracts', function ($q) {
+            $q->where('status', 'active');
+        });
+    }
+
+    /**
+     * Scope: Only occupied rental spaces (with active contracts)
+     */
+    public function scopeOccupied($query)
+    {
+        return $query->whereHas('contracts', function ($q) {
+            $q->where('status', 'active');
+        });
     }
 
     /**
