@@ -65,12 +65,12 @@ class RentalSpace extends Model
     }
 
     /**
-     * Scope: Only available rental spaces (without active contracts)
+     * Scope: Only available rental spaces (without active or pending contracts)
      */
     public function scopeAvailable($query)
     {
         return $query->whereDoesntHave('contracts', function ($q) {
-            $q->where('status', 'active');
+            $q->whereIn('status', ['active', 'pending']);
         });
     }
 
