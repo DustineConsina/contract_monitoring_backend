@@ -82,7 +82,8 @@ class PaymentController extends Controller
             'tenant.user',
             'contract' => function($query) {
                 $query->with('rentalSpace');
-            }
+            },
+            'demandLetters'
         ])->findOrFail($id);
 
         // Ensure financial fields are present and properly typed
