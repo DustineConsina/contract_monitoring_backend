@@ -623,16 +623,8 @@ class ContractController extends Controller
                 // Continue activation even if payment schedule fails
             }
 
-            // Create notification for tenant
-            $tenant = $contract->tenant;
-            $rentalSpaceName = $contract->rentalSpace ? $contract->rentalSpace->name : 'Unknown Space';
-            Notification::create([
-                'user_id' => $tenant->user_id,
-                'type' => 'contract_activated',
-                'title' => 'Contract Activated',
-                'message' => "Your contract {$contract->contract_number} for {$rentalSpaceName} has been activated.",
-                'data' => ['contract_id' => $contract->id],
-            ]);
+            // Create activation notification for admin/staff/cashier
+            $contract->createActivationNotification();
 
             AuditLog::log('update', 'Contract', $contract->id, "Activated contract: {$contract->contract_number}", ['status' => $oldStatus], ['status' => 'active']);
 

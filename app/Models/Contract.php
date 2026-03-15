@@ -128,6 +128,75 @@ class Contract extends Model
     }
 
     /**
+     * Create activation notification for admin/staff/cashier.
+     * 
+     * This creates an IN-APP NOTIFICATION for admin/staff/cashier users.
+     * Sent when a contract is activated.
+     * 
+     * @return bool True if notification created successfully, false otherwise
+     */
+    public function createActivationNotification()
+    {
+        try {
+            // Ensure relationships are loaded
+            if (!$this->tenant) {
+                $this->load('tenant');
+            }
+
+            if (!$this->rentalSpace) {
+                $this->load('rentalSpace');
+            }
+
+            // Get all admin, staff, and cashier users
+            $adminUsers = User::whereIn('role', ['admin', 'staff', 'cashier'])->get();
+
+            if ($adminUsers->isEmpty()) {
+                \Log::warning('Contract activation notification failed - no admin users found', [
+                    'contract_id' => $this->id,
+                    'contract_number' => $this->contract_number,
+                ]);
+                return false;
+            }
+
+            // Create notification for each admin user
+            foreach ($adminUsers as $user) {
+                $tenantName = $this->tenant->business_name ?? 'N/A';
+                
+                Notification::create([
+                    'user_id' => $user->id,
+                    'type' => 'contract_activated',
+                    'title' => 'Contract Activated',
+                    'message' => "Contract #{$this->contract_number} for {$this->rentalSpace->name} (Tenant: {$tenantName}) has been activated. Payment schedule is now active.",
+                    'data' => [
+                        'contract_id' => (int) $this->id,
+                        'contract_number' => (string) $this->contract_number,
+                        'rental_space' => (string) $this->rentalSpace->name,
+                        'tenant_name' => (string) $tenantName,
+                        'tenant_id' => (int) $this->tenant_id,
+                    ],
+                    'is_read' => false,
+                    'email_sent' => false,
+                ]);
+            }
+
+            \Log::info('Contract activation notification created for admin users', [
+                'contract_id' => $this->id,
+                'contract_number' => $this->contract_number,
+                'tenant_id' => $this->tenant_id,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            \Log::error('Failed to create activation notification', [
+                'contract_id' => $this->id,
+                'contract_number' => $this->contract_number,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
      * Create renewal notification for admin/staff/cashier.
      * 
      * This creates an IN-APP NOTIFICATION ONLY (no email is sent).
