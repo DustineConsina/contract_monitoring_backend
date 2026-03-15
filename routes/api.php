@@ -102,6 +102,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tenants/{id}/payment-history', [PaymentController::class, 'getPaymentHistory']);
     
     // Demand Letters - New Routes
+    Route::get('/demand-letters', [PaymentController::class, 'getAllDemandLetters']);
     Route::get('/contracts/{contractId}/demand-letters', [PaymentController::class, 'listDemandLetters']);
     Route::get('/demand-letters/{demandLetterId}/download', [PaymentController::class, 'downloadDemandLetter']);
     Route::get('/contracts/{contractId}/payment-summary', [PaymentController::class, 'getContractPaymentSummary']);

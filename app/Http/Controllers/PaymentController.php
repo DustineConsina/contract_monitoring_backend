@@ -568,6 +568,70 @@ class PaymentController extends Controller
     }
 
     /**
+     * Get all demand letters for all contracts
+     */
+    public function getAllDemandLetters(Request $request)
+    {
+        $query = DemandLetter::with([
+            'payment',
+            'tenant',
+            'contract.rentalSpace'
+        ]);
+
+        // Filter by status
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Filter by tenant
+        if ($request->has('tenant_id')) {
+            $query->where('tenant_id', $request->tenant_id);
+        }
+
+        // Sort
+        $sortBy = $request->get('sort_by', 'issued_date');
+        $sortOrder = $request->get('sort_order', 'desc');
+        $query->orderBy($sortBy, $sortOrder);
+
+        $demandLetters = $query->paginate($request->get('per_page', 20))->through(function ($letter) {
+            return [
+                'id' => $letter->id,
+                'demandNumber' => $letter->demand_number,
+                'contractId' => $letter->contract_id,
+                'tenantId' => $letter->tenant_id,
+                'paymentId' => $letter->payment_id,
+                'outstandingBalance' => (float) $letter->outstanding_balance,
+                'totalAmountDemanded' => (float) $letter->total_amount_demanded,
+                'issuedDate' => $letter->issued_date->toIso8601String(),
+                'dueDate' => $letter->due_date->toIso8601String(),
+                'status' => $letter->status,
+                'sentDate' => $letter->sent_date?->toIso8601String(),
+                'emailSentTo' => $letter->email_sent_to,
+                'remarks' => $letter->remarks,
+                'tenant' => $letter->tenant ? [
+                    'id' => $letter->tenant->id,
+                    'name' => $letter->tenant->business_name,
+                    'contactPerson' => $letter->tenant->contact_person,
+                    'email' => $letter->tenant->email,
+                ] : null,
+                'contract' => $letter->contract ? [
+                    'id' => $letter->contract->id,
+                    'contractNumber' => $letter->contract->contract_number,
+                    'rentalSpace' => $letter->contract->rentalSpace ? [
+                        'id' => $letter->contract->rentalSpace->id,
+                        'name' => $letter->contract->rentalSpace->name,
+                    ] : null,
+                ] : null,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $demandLetters
+        ]);
+    }
+
+    /**
      * Get all demand letters for a contract
      */
     public function listDemandLetters($contractId)
